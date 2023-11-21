@@ -28,12 +28,26 @@ type Coordinator struct {
 	// 0 = IDLE
 	// 1 = COMPLETED
 	// 2 = IN-PROGRESS
-	reduceStatus map[string]int
+	reduceStatus map[int]string
 	//Id and completed tasks for a worker
 	worker map[string]string
+	//Check if all maps are done
+	mapDone bool
 }
 
 // Your code here -- RPC handlers for the worker to call.
+
+func (c *Coordinator) RequestMapTask(args *MapTaskArgs, reply *MapTaskReply) error {
+	// Implement logic to assign map tasks to workers
+	// ...
+	return nil
+}
+
+func (c *Coordinator) RequestReduceTask(args *ReduceTaskArgs, reply *ReduceTaskReply) error {
+	// Implement logic to assign reduce tasks to workers
+	// ...
+	return nil
+}
 
 // an example RPC handler.
 //
@@ -98,8 +112,9 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 		files:             files,
 		partitionedFiles:  make(map[int]string),
 		intermediateFiles: make([]string, 0),
-		reduceStatus:      make(map[string]int),
+		reduceStatus:      make(map[int]string),
 		worker:            make(map[string]string),
+		mapDone:           false,
 	}
 
 	for _, file := range files {
