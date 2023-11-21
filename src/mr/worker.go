@@ -4,7 +4,16 @@ import "fmt"
 import "log"
 import "net/rpc"
 import "hash/fnv"
+import "math/rand"
+import "sort"
 
+// for sorting by key.
+type ByKey []mr.KeyValue
+
+// for sorting by key.
+func (a ByKey) Len() int           { return len(a) }
+func (a ByKey) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a ByKey) Less(i, j int) bool { return a[i].Key < a[j].Key }
 
 //
 // Map functions return a slice of KeyValue.
@@ -31,7 +40,57 @@ func ihash(key string) int {
 func Worker(mapf func(string, string) []KeyValue,
 	reducef func(string, []string) string) {
 
+		//TODO:
+		//Implement if check that checks wether the task is map or reduce
+		//As of now, no logic helps split the behaviour depending on the task
+
+		mapPath := "../maps/"
+		intermediatePath := "./intermediate/"
+
+		workerID := rand.Intn(9000) + 1000
+
+		var mapTask MapTaskReply
+		ok := call("Coordinator.RequestMapTask", &MapTaskArgs{WorkerID: workerID}, &mapTask)
+		if !ok || mapTask.file == "" {
+			Println("Error")
+			return
+		}
+
+		fileName := mapTask.FileID
+
+		content, err := os.ReadFile(mapPath + fileName)
+		if err != nil {
+			fmt.Println("Error reading file: ", err)
+		}
 		
+		//Save mapping to intermediate folder
+		mapped := mapf(fileName, string(content))
+		sort.Sort(ByKey(mapped))
+
+
+		file, err := os.Create(intermediatePath + fileName + ".json")
+		if err != nil {
+			fmt.Println("Error saving intermediate file: ", err)
+		}
+		defer file.Close()
+
+		//TODO
+		//Change var. names(!!)
+		dividedKv := make([][]KeyValue, nReduce)
+		var kvNo int
+		for _, kv := range kvs {
+			kvNo = ihash(kv.Key) % nReduce
+			dividedKv[kvNo] = append(dividedKv[kvNo], kv)
+		}
+
+		encoder := json.NewEncoder(intermediateFile)
+		for _, kv := range dividedKv {
+			err = encoder.Encode(&kv)
+		}
+		if err != nil {
+			panic(err)
+		}
+
 
 	// Your worker implementation here.
 

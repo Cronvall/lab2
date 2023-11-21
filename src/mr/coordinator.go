@@ -19,15 +19,15 @@ type Coordinator struct {
 	//Execute the mapping and store its status
 	//Partitioned according to number of nReduces
 	// 0 = IDLE
-	// 1 = COMPLETED
-	// 2 = IN-PROGRESS
-	partitionedFiles map[int]string
+	// 1 = IN-PROGRESS
+	// 2 = COMPLETED
+	partitionedFiles map[string]int
 	//Store the mapped file after status == 1
 	intermediateFiles []string
 	//Execute the reducing and store its status
 	// 0 = IDLE
-	// 1 = COMPLETED
-	// 2 = IN-PROGRESS
+	// 1 = IN-PROGRESS
+	// 2 = COMPLETED
 	reduceStatus map[int]string
 	//Id and completed tasks for a worker
 	worker map[string]string
@@ -38,8 +38,14 @@ type Coordinator struct {
 // Your code here -- RPC handlers for the worker to call.
 
 func (c *Coordinator) RequestMapTask(args *MapTaskArgs, reply *MapTaskReply) error {
-	// Implement logic to assign map tasks to workers
-	// ...
+	for fileID, state := range c.partitionedFiles {
+		if state == 0 {
+			reply.FileID = fileID
+			c.partitionedFiles[fileID] = 1
+			worker[args.workerID] = fileID
+		}
+	}
+
 	return nil
 }
 
@@ -110,7 +116,7 @@ func (c *Coordinator) Done() bool {
 func MakeCoordinator(files []string, nReduce int) *Coordinator {
 	c := Coordinator{
 		files:             files,
-		partitionedFiles:  make(map[int]string),
+		partitionedFiles:  make(map[string]int),
 		intermediateFiles: make([]string, 0),
 		reduceStatus:      make(map[int]string),
 		worker:            make(map[string]string),
@@ -126,15 +132,15 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 		var parts []string
 		partSize := len(fileContent) / nReduce
 		for i := 0; i < nReduce; i++ {
-			c.partitionedFiles[0] = file + "i"
+			c.partitionedFiles[file + "i"] = 0
 			start := i * partSize
 			end := start + partSize
 			if i == nReduce-1 {
 				end = len(fileContent)
 			}
 			parts = append(parts, fileContent[start:end])
-			os.Create("../jobs/" + file + string(i) + ".txt")
-			os.WriteFile("../jobs/"+file+string(i)+".txt", []byte(parts[i]), 0644)
+			os.Create("../maps/" + file + string(i) + ".txt")
+			os.WriteFile("../maps/"+file+string(i)+".txt", []byte(parts[i]), 0644)
 		}
 	}
 

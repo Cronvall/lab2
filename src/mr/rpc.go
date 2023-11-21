@@ -25,12 +25,11 @@ type ExampleReply struct {
 }
 
 type MapTaskArgs struct {
-	workerID int
+	WorkerID int
 }
 
 type MapTaskReply struct {
-	file    string
-	content string
+	FileID string
 }
 
 type ReduceTaskArgs struct {
