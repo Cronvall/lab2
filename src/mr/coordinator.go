@@ -30,9 +30,11 @@ type Coordinator struct {
 	// 2 = COMPLETED
 	reduceStatus map[int]string
 	//Id and completed tasks for a worker
-	worker map[string]string
+	worker map[int]string
 	//Check if all maps are done
 	mapDone bool
+	//nReduce
+	nReduce int
 }
 
 // Your code here -- RPC handlers for the worker to call.
@@ -42,7 +44,8 @@ func (c *Coordinator) RequestMapTask(args *MapTaskArgs, reply *MapTaskReply) err
 		if state == 0 {
 			reply.FileID = fileID
 			c.partitionedFiles[fileID] = 1
-			worker[args.workerID] = fileID
+			c.worker[args.WorkerID] = fileID
+			reply.NReduce = c.nReduce
 		}
 	}
 
@@ -119,8 +122,9 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 		partitionedFiles:  make(map[string]int),
 		intermediateFiles: make([]string, 0),
 		reduceStatus:      make(map[int]string),
-		worker:            make(map[string]string),
+		worker:            make(map[int]string),
 		mapDone:           false,
+		nReduce:           nReduce,
 	}
 
 	for _, file := range files {
@@ -132,7 +136,7 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 		var parts []string
 		partSize := len(fileContent) / nReduce
 		for i := 0; i < nReduce; i++ {
-			c.partitionedFiles[file + "i"] = 0
+			c.partitionedFiles[file+"i"] = 0
 			start := i * partSize
 			end := start + partSize
 			if i == nReduce-1 {

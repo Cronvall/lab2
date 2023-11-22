@@ -29,7 +29,8 @@ type MapTaskArgs struct {
 }
 
 type MapTaskReply struct {
-	FileID string
+	FileID  string
+	NReduce int
 }
 
 type ReduceTaskArgs struct {
