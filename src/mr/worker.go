@@ -37,55 +37,59 @@ func ihash(key string) int {
 func Worker(mapf func(string, string) []KeyValue,
 	reducef func(string, []string) string) {
 
-	//TODO:
-	//Implement if check that checks wether the task is map or reduce
-	//As of now, no logic helps split the behaviour depending on the task
+	for {
 
-	mapPath := "../maps/"
-	intermediatePath := "./intermediate/"
+		//TODO:
+		//Implement if check that checks wether the task is map or reduce
+		//As of now, no logic helps split the behaviour depending on the task
 
-	workerID := rand.Intn(9000) + 1000
+		mapPath := "../maps/"
+		intermediatePath := "../intermediate/"
 
-	var mapTask MapTaskReply
-	ok := call("Coordinator.RequestMapTask", &MapTaskArgs{WorkerID: workerID}, &mapTask)
-	if !ok || mapTask.FileID == "" {
-		fmt.Println("Error")
-		return
-	}
+		workerID := rand.Intn(9000) + 1000
 
-	fileName := mapTask.FileID
-	nReduce := mapTask.NReduce
+		var mapTask MapTaskReply
+		ok := call("Coordinator.RequestMapTask", &MapTaskArgs{WorkerID: workerID}, &mapTask)
+		fmt.Println("OK: ", ok)
+		if !ok || mapTask.FileID == "" {
+			fmt.Println("Error")
+			return
+		}
 
-	content, err := os.ReadFile(mapPath + fileName)
-	if err != nil {
-		fmt.Println("Error reading file: ", err)
-	}
+		fileName := mapTask.FileID
+		nReduce := mapTask.NReduce
 
-	//Save mapping to intermediate folder
-	mapped := mapf(fileName, string(content))
-	sort.Sort(ByKey(mapped))
+		content, err := os.ReadFile(mapPath + fileName + ".txt")
+		if err != nil {
+			fmt.Println("Error reading file: ", err)
+		}
 
-	intermediateFile, err := os.Create(intermediatePath + fileName + ".json")
-	if err != nil {
-		fmt.Println("Error saving intermediate file: ", err)
-	}
-	defer intermediateFile.Close()
+		//Save mapping to intermediate folder
+		mapped := mapf(fileName, string(content))
+		sort.Sort(ByKey(mapped))
 
-	//TODO
-	//Change var. names(!!)
-	dividedKv := make([][]KeyValue, nReduce)
-	var kvNo int
-	for _, kv := range mapped {
-		kvNo = ihash(kv.Key) % nReduce
-		dividedKv[kvNo] = append(dividedKv[kvNo], kv)
-	}
+		intermediateFile, err := os.Create(intermediatePath + fileName + ".json")
+		if err != nil {
+			fmt.Println("Error saving intermediate file: ", err)
+		}
+		defer intermediateFile.Close()
 
-	encoder := json.NewEncoder(intermediateFile)
-	for _, kv := range dividedKv {
-		err = encoder.Encode(&kv)
-	}
-	if err != nil {
-		panic(err)
+		//TODO
+		//Change var. names(!!)
+		dividedKv := make([][]KeyValue, nReduce)
+		var kvNo int
+		for _, kv := range mapped {
+			kvNo = ihash(kv.Key) % nReduce
+			dividedKv[kvNo] = append(dividedKv[kvNo], kv)
+		}
+
+		encoder := json.NewEncoder(intermediateFile)
+		for _, kv := range dividedKv {
+			err = encoder.Encode(&kv)
+			if err != nil {
+				panic(err)
+			}
+		}
 	}
 
 	// Your worker implementation here.

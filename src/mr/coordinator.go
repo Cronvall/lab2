@@ -7,6 +7,9 @@ import (
 	"net/http"
 	"net/rpc"
 	"os"
+	"strconv"
+	"strings"
+	"sync"
 	"time"
 )
 
@@ -35,20 +38,28 @@ type Coordinator struct {
 	mapDone bool
 	//nReduce
 	nReduce int
+	//lock
+	mu sync.Mutex
 }
 
 // Your code here -- RPC handlers for the worker to call.
 
 func (c *Coordinator) RequestMapTask(args *MapTaskArgs, reply *MapTaskReply) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	fmt.Println("REQ")
+
 	for fileID, state := range c.partitionedFiles {
 		if state == 0 {
 			reply.FileID = fileID
 			c.partitionedFiles[fileID] = 1
 			c.worker[args.WorkerID] = fileID
 			reply.NReduce = c.nReduce
+			fmt.Println("return in for")
+			return nil
 		}
 	}
-
+	fmt.Println("return")
 	return nil
 }
 
@@ -84,27 +95,28 @@ func (c *Coordinator) server() {
 // if the entire job has finished.
 func (c *Coordinator) Done() bool {
 	ret := false
+	fmt.Println("DONE")
 
 	// Future planning:
 	// Check if completed tasks are the same it was for worker 10 seconds earlier, if so,
 	// worker has failed
 
 	failBool := make(chan bool)
-	failWorker := make(chan string)
+	failWorker := make(chan int)
 
 	for worker := range c.worker {
-		go func() {
-			workerCopy := c.worker
+		workerCopy := c.worker[worker]
+		go func(workerID int) {
 			time.Sleep(10 * time.Second)
-			if workerCopy[worker] == c.worker[worker] {
+			if workerCopy == c.worker[workerID] {
 				// Bad, wont work fix, want to return what workedID fails and then terminate all prior tasks
 				failBool <- true
-				failWorker <- worker
+				failWorker <- workerID
 			}
-		}()
+		}(worker)
 	}
 	if <-failBool {
-		failedWorker := <-failWorker
+		//failedWorker := <-failWorker
 		//use the ID to remove the prior tasks from the failed worker and assign them to a new one
 		return ret
 	}
@@ -135,16 +147,18 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 		fileContent := string(rawFileContent)
 		var parts []string
 		partSize := len(fileContent) / nReduce
+		fileName := strings.Split(file, ".")[0]
 		for i := 0; i < nReduce; i++ {
-			c.partitionedFiles[file+"i"] = 0
+			id := strconv.Itoa(i)
+			c.partitionedFiles[fileName+id] = 0
 			start := i * partSize
 			end := start + partSize
 			if i == nReduce-1 {
 				end = len(fileContent)
 			}
 			parts = append(parts, fileContent[start:end])
-			os.Create("../maps/" + file + string(i) + ".txt")
-			os.WriteFile("../maps/"+file+string(i)+".txt", []byte(parts[i]), 0644)
+			os.Create("../maps/" + fileName + id + ".txt")
+			os.WriteFile("../maps/"+fileName+id+".txt", []byte(parts[i]), 0644)
 		}
 	}
 
