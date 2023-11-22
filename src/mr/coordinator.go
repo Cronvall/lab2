@@ -31,7 +31,7 @@ type Coordinator struct {
 	// 0 = IDLE
 	// 1 = IN-PROGRESS
 	// 2 = COMPLETED
-	reduceStatus map[int]string
+	reduceStatus map[string]int
 	//Id and completed tasks for a worker
 	worker map[int]string
 	//Check if all maps are done
@@ -47,7 +47,7 @@ type Coordinator struct {
 func (c *Coordinator) RequestMapTask(args *MapTaskArgs, reply *MapTaskReply) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	fmt.Println("REQ")
+	fmt.Println("REQ Map")
 
 	for fileID, state := range c.partitionedFiles {
 		if state == 0 {
@@ -66,6 +66,20 @@ func (c *Coordinator) RequestMapTask(args *MapTaskArgs, reply *MapTaskReply) err
 func (c *Coordinator) RequestReduceTask(args *ReduceTaskArgs, reply *ReduceTaskReply) error {
 	// Implement logic to assign reduce tasks to workers
 	// ...
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	fmt.Println("REQ Reduce")
+
+	for reduceID, state := range c.reduceStatus {
+		if state == 0 {
+			reply.ReduceID = reduceID
+			c.reduceStatus[reduceID] = 1
+			c.worker[args.WorkerID] = reduceID
+			reply.NMap = len(c.files)
+			fmt.Println("return in for")
+			return nil
+		}
+	}
 	return nil
 }
 
@@ -133,7 +147,7 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 		files:             files,
 		partitionedFiles:  make(map[string]int),
 		intermediateFiles: make([]string, 0),
-		reduceStatus:      make(map[int]string),
+		reduceStatus:      make(map[string]int),
 		worker:            make(map[int]string),
 		mapDone:           false,
 		nReduce:           nReduce,

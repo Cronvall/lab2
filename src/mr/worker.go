@@ -45,10 +45,12 @@ func Worker(mapf func(string, string) []KeyValue,
 
 		mapPath := "../maps/"
 		intermediatePath := "../intermediate/"
+		finalPath := "../final/"
 
 		workerID := rand.Intn(9000) + 1000
 
 		var mapTask MapTaskReply
+
 		ok := call("Coordinator.RequestMapTask", &MapTaskArgs{WorkerID: workerID}, &mapTask)
 		fmt.Println("OK: ", ok)
 		if !ok || mapTask.FileID == "" {
@@ -90,12 +92,58 @@ func Worker(mapf func(string, string) []KeyValue,
 				panic(err)
 			}
 		}
+		//||||||    																		  	    								  ||||||
+		//VVVVVV CURRENT REDUCE LOGIC, SHOULD BE SEGMENTED Out USING SWITCH CASES VVVVVV
+
+		/* USE THIS AFTER IMPLEMENTATION OF SWITCH CASES
+		var reduceTask ReduceTaskReply
+		ok = call("Coordinator.RequestReduceTask", &ReduceTaskArgs{WorkerID: workerID}, &reduceTask)
+		if !ok || reduceTask.ReduceID == "" {
+			fmt.Println("Error getting reduce task")
+			return
+		}
+		reduceID := reduceTask.ReduceID         //similar to fileID
+		*/
+
+		//Temp solution for reduceID
+		reduceID := fileName
+		var intermediateData []IntermediateData // Define a struct to hold your JSON data
+
+		//read json files from intermediate folder and then reduce
+		intermediateContent, err := os.ReadFile(intermediatePath + reduceID + ".json")
+		if err != nil {
+			fmt.Println("Error reading file: ", err)
+		}
+
+		// Unmarshal the JSON data into the slice of structs
+		err = json.Unmarshal(intermediateContent, &intermediateData)
+		if err != nil {
+			fmt.Println("Error unmarshaling JSON: ", err)
+			return
+		}
+
+		ofile, _ := os.Create(finalPath + reduceID + ".txt")
+
+		for i := 0; i < len(intermediateData); {
+			j := i + 1
+			for j < len(intermediateData) && intermediateData[j].Key == intermediateData[i].Key {
+				j++
+			}
+			values := []string{}
+			for k := i; k < j; k++ {
+				values = append(values, intermediateData[k].Value)
+			}
+			output := reducef(intermediateData[i].Key, values)
+
+			// This is the correct format for each line of Reduce output.
+			fmt.Fprintf(ofile, "%v %v\n", intermediateData[i].Key, output)
+
+			i = j
+		}
+		ofile.Close()
 	}
 
 	// Your worker implementation here.
-
-	// uncomment to send the Example RPC to the coordinator.
-	// CallExample()
 
 }
 

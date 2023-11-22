@@ -34,9 +34,17 @@ type MapTaskReply struct {
 }
 
 type ReduceTaskArgs struct {
+	WorkerID int
 }
 
 type ReduceTaskReply struct {
+	ReduceID string
+	NMap     int
+}
+
+type IntermediateData struct {
+	Key   string `json:"key"`
+	Value string `json:"value"`
 }
 
 // Add your RPC definitions here.
