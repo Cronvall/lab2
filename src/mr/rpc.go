@@ -24,19 +24,14 @@ type ExampleReply struct {
 	Y int
 }
 
-type MapTaskArgs struct {
+type TaskArgs struct {
 	WorkerID int
 }
 
-type MapTaskReply struct {
+type TaskReply struct {
+	Task    string
 	FileID  string
 	NReduce int
-}
-
-type ReduceTaskArgs struct {
-}
-
-type ReduceTaskReply struct {
 }
 
 // Add your RPC definitions here.

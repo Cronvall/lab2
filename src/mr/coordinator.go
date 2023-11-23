@@ -31,7 +31,7 @@ type Coordinator struct {
 	// 0 = IDLE
 	// 1 = IN-PROGRESS
 	// 2 = COMPLETED
-	reduceStatus map[int]string
+	reduceFiles map[string]int
 	//Id and completed tasks for a worker
 	worker map[int]string
 	//Check if all maps are done
@@ -44,28 +44,37 @@ type Coordinator struct {
 
 // Your code here -- RPC handlers for the worker to call.
 
-func (c *Coordinator) RequestMapTask(args *MapTaskArgs, reply *MapTaskReply) error {
+func (c *Coordinator) RequestTask(args *TaskArgs, reply *TaskReply) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	fmt.Println("REQ")
 
-	for fileID, state := range c.partitionedFiles {
-		if state == 0 {
-			reply.FileID = fileID
-			c.partitionedFiles[fileID] = 1
-			c.worker[args.WorkerID] = fileID
-			reply.NReduce = c.nReduce
-			fmt.Println("return in for")
-			return nil
+	if !c.mapDone {
+		for fileID, state := range c.partitionedFiles {
+			if state == 0 {
+				reply.Task = "map"
+				reply.FileID = fileID
+				c.partitionedFiles[fileID] = 1
+				c.worker[args.WorkerID] = fileID
+				reply.NReduce = c.nReduce
+				c.reduceFiles[fileID] = 0
+				return nil
+			}
 		}
 	}
+	c.mapDone = true
+	if c.mapDone {
+		for fileID, state := range c.reduceFiles {
+			if state == 0 {
+				reply.Task = "reduce"
+				reply.FileID = fileID
+				c.reduceFiles[fileID] = 1
+				c.worker[args.WorkerID] = fileID
+				return nil
+			}
+		}
+	}
+	fmt.Println(c.mapDone)
 	fmt.Println("return")
-	return nil
-}
-
-func (c *Coordinator) RequestReduceTask(args *ReduceTaskArgs, reply *ReduceTaskReply) error {
-	// Implement logic to assign reduce tasks to workers
-	// ...
 	return nil
 }
 
@@ -94,24 +103,24 @@ func (c *Coordinator) server() {
 // main/mrcoordinator.go calls Done() periodically to find out
 // if the entire job has finished.
 func (c *Coordinator) Done() bool {
+	//c.mu.Lock()
+	//defer c.mu.Unlock()
 	ret := false
 	fmt.Println("DONE")
 
-	// Future planning:
-	// Check if completed tasks are the same it was for worker 10 seconds earlier, if so,
-	// worker has failed
+	//TODO
+	//FIX DATA RACE
 
 	failBool := make(chan bool)
 	failWorker := make(chan int)
-
 	for worker := range c.worker {
-		workerCopy := c.worker[worker]
-		go func(workerID int) {
+		go func(worker int) {
+			workerCopy := c.worker[worker]
 			time.Sleep(10 * time.Second)
-			if workerCopy == c.worker[workerID] {
+			if workerCopy == c.worker[worker] {
 				// Bad, wont work fix, want to return what workedID fails and then terminate all prior tasks
 				failBool <- true
-				failWorker <- workerID
+				failWorker <- worker
 			}
 		}(worker)
 	}
@@ -133,7 +142,7 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 		files:             files,
 		partitionedFiles:  make(map[string]int),
 		intermediateFiles: make([]string, 0),
-		reduceStatus:      make(map[int]string),
+		reduceFiles:       make(map[string]int),
 		worker:            make(map[int]string),
 		mapDone:           false,
 		nReduce:           nReduce,

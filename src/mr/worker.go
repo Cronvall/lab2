@@ -33,69 +33,129 @@ func ihash(key string) int {
 	return int(h.Sum32() & 0x7fffffff)
 }
 
+// Worker logic for map task
+func mapTaskWorker(mapf func(string, string) []KeyValue, workerID int, mapTask TaskReply) {
+
+	mapPath := "../maps/"
+	intermediatePath := "../intermediate/"
+
+	fileName := mapTask.FileID
+	nReduce := mapTask.NReduce
+
+	content, err := os.ReadFile(mapPath + fileName + ".txt")
+	if err != nil {
+		fmt.Println("Error reading file: ", err)
+	}
+
+	//Save mapping to intermediate folder
+	mapped := mapf(fileName, string(content))
+	sort.Sort(ByKey(mapped))
+
+	intermediateFile, err := os.Create(intermediatePath + fileName + ".json")
+	if err != nil {
+		fmt.Println("Error saving intermediate file: ", err)
+	}
+	defer intermediateFile.Close()
+
+	//TODO
+	//Change var. names(!!)
+	dividedKv := make([][]KeyValue, nReduce)
+	var kvNo int
+	for _, kv := range mapped {
+		kvNo = ihash(kv.Key) % nReduce
+		dividedKv[kvNo] = append(dividedKv[kvNo], kv)
+	}
+
+	encoder := json.NewEncoder(intermediateFile)
+	for _, kv := range dividedKv {
+		err = encoder.Encode(&kv)
+		if err != nil {
+			panic(err)
+		}
+	}
+}
+
+func reduceTaskWorker(reducef func(string, []string) string, workerID int, reduceTask TaskReply) {
+
+	intermediatePath := "../intermediate/"
+	fileID := reduceTask.FileID
+
+	intermediateFile, err := os.Open(intermediatePath + fileID + ".json")
+	if err != nil {
+		panic(err)
+	}
+	var kva []KeyValue
+	dec := json.NewDecoder(intermediateFile)
+	for {
+		var kv KeyValue
+		if err := dec.Decode(&kv); err != nil {
+			break
+		}
+		kva = append(kva, kv)
+	}
+	sort.Sort(ByKey(kva))
+	outputPath := "../final/"
+	outputFileName := "mr-out-" + fileID + ".txt"
+	outputFile, err := os.Create(outputPath + outputFileName)
+	if err != nil {
+		fmt.Println("Error: ", err)
+	}
+	defer outputFile.Close()
+
+	i := 0
+	for i < len(kva) {
+		j := i + 1
+		for j < len(kva) && kva[j].Key == kva[i].Key {
+			j++
+		}
+		var values []string
+		for k := i; k < j; k++ {
+			values = append(values, kva[k].Value)
+		}
+		output := reducef(kva[i].Key, values)
+
+		// this is the correct format for each line of Reduce output.
+		fmt.Fprintf(outputFile, "%v %v\n", kva[i].Key, output)
+		i = j
+	}
+
+}
+
 // main/mrworker.go calls this function.
 func Worker(mapf func(string, string) []KeyValue,
 	reducef func(string, []string) string) {
 
 	for {
-
 		//TODO:
 		//Implement if check that checks wether the task is map or reduce
 		//As of now, no logic helps split the behaviour depending on the task
 
-		mapPath := "../maps/"
-		intermediatePath := "../intermediate/"
-
 		workerID := rand.Intn(9000) + 1000
 
-		var mapTask MapTaskReply
-		ok := call("Coordinator.RequestMapTask", &MapTaskArgs{WorkerID: workerID}, &mapTask)
+		var task TaskReply
+		ok := call("Coordinator.RequestTask", &TaskArgs{WorkerID: workerID}, &task)
 		fmt.Println("OK: ", ok)
-		if !ok || mapTask.FileID == "" {
+		if !ok || task.FileID == "" {
 			fmt.Println("Error")
 			return
 		}
 
-		fileName := mapTask.FileID
-		nReduce := mapTask.NReduce
-
-		content, err := os.ReadFile(mapPath + fileName + ".txt")
-		if err != nil {
-			fmt.Println("Error reading file: ", err)
+		switch task.Task {
+		case "map":
+			mapTaskWorker(mapf, workerID, task)
+		case "reduce":
+			fmt.Println("REDUCE")
+			reduceTaskWorker(reducef, workerID, task)
+			//reduceTaskWorker(reducef, mapTask)
+		default:
+			fmt.Println("Error: Task type not found: " + task.Task)
 		}
 
-		//Save mapping to intermediate folder
-		mapped := mapf(fileName, string(content))
-		sort.Sort(ByKey(mapped))
+		// Your worker implementation here.
 
-		intermediateFile, err := os.Create(intermediatePath + fileName + ".json")
-		if err != nil {
-			fmt.Println("Error saving intermediate file: ", err)
-		}
-		defer intermediateFile.Close()
-
-		//TODO
-		//Change var. names(!!)
-		dividedKv := make([][]KeyValue, nReduce)
-		var kvNo int
-		for _, kv := range mapped {
-			kvNo = ihash(kv.Key) % nReduce
-			dividedKv[kvNo] = append(dividedKv[kvNo], kv)
-		}
-
-		encoder := json.NewEncoder(intermediateFile)
-		for _, kv := range dividedKv {
-			err = encoder.Encode(&kv)
-			if err != nil {
-				panic(err)
-			}
-		}
+		// uncomment to send the Example RPC to the coordinator.
+		// CallExample()
 	}
-
-	// Your worker implementation here.
-
-	// uncomment to send the Example RPC to the coordinator.
-	// CallExample()
 
 }
 

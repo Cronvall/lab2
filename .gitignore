@@ -4,3 +4,4 @@ api.key
 *-handin.tar.gz
 src/intermediate/*.json
 src/maps/*.txt
+src/final/*.txt
