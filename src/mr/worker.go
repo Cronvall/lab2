@@ -70,7 +70,7 @@ func mapTaskWorker(mapf func(string, string) []KeyValue, workerID int, mapTask T
 	for _, kv := range dividedKv {
 		err = encoder.Encode(&kv)
 		if err != nil {
-			panic(err)
+			fmt.Print("Error encoding to JSON file: ", err)
 		}
 	}
 }
@@ -82,17 +82,17 @@ func reduceTaskWorker(reducef func(string, []string) string, workerID int, reduc
 
 	intermediateFile, err := os.Open(intermediatePath + fileID + ".json")
 	if err != nil {
-		panic(err)
+		fmt.Println("Error opening JSON file: ", err)
 	}
+
 	var kva []KeyValue
 	dec := json.NewDecoder(intermediateFile)
-	for {
-		var kv KeyValue
-		if err := dec.Decode(&kv); err != nil {
-			break
-		}
-		kva = append(kva, kv)
+	var kv []KeyValue
+	if err := dec.Decode(&kv); err != nil {
+		fmt.Println("Error decoding JSON: ", err)
 	}
+	kva = append(kva, kv...)
+
 	sort.Sort(ByKey(kva))
 	outputPath := "../final/"
 	outputFileName := "mr-out-" + fileID + ".txt"
@@ -117,6 +117,7 @@ func reduceTaskWorker(reducef func(string, []string) string, workerID int, reduc
 		// this is the correct format for each line of Reduce output.
 		fmt.Fprintf(outputFile, "%v %v\n", kva[i].Key, output)
 		i = j
+		fmt.Println("OUTPUT:", output)
 	}
 
 }
@@ -136,7 +137,7 @@ func Worker(mapf func(string, string) []KeyValue,
 		ok := call("Coordinator.RequestTask", &TaskArgs{WorkerID: workerID}, &task)
 		fmt.Println("OK: ", ok)
 		if !ok || task.FileID == "" {
-			fmt.Println("Error")
+			fmt.Println("Error calling for task")
 			return
 		}
 
