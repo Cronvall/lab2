@@ -35,7 +35,8 @@ type Coordinator struct {
 	//Id and completed tasks for a worker
 	worker map[int]string
 	//Check if all maps are done
-	mapDone bool
+	mapDone    bool
+	reduceDone bool
 	//nReduce
 	nReduce int
 	//lock
@@ -44,42 +45,60 @@ type Coordinator struct {
 
 // Your code here -- RPC handlers for the worker to call.
 
-func (c *Coordinator) RequestMapTask(args *MapTaskArgs, reply *MapTaskReply) error {
+func (c *Coordinator) RequestMapTask(args *TaskArgs, reply *TaskReply) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	fmt.Println("REQ Map")
 
 	for fileID, state := range c.partitionedFiles {
 		if state == 0 {
 			reply.FileID = fileID
 			c.partitionedFiles[fileID] = 1
 			c.worker[args.WorkerID] = fileID
-			reply.NReduce = c.nReduce
+			reply.N = c.nReduce
+			reply.TaskType = "map"
 			fmt.Println("return in for")
 			return nil
+		} else {
+			c.mapDone = true
 		}
 	}
 	fmt.Println("return")
 	return nil
 }
 
-func (c *Coordinator) RequestReduceTask(args *ReduceTaskArgs, reply *ReduceTaskReply) error {
+func (c *Coordinator) RequestReduceTask(args *TaskArgs, reply *TaskReply) error {
 	// Implement logic to assign reduce tasks to workers
 	// ...
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	fmt.Println("REQ Reduce")
 
 	for reduceID, state := range c.reduceStatus {
 		if state == 0 {
-			reply.ReduceID = reduceID
+			reply.FileID = reduceID
 			c.reduceStatus[reduceID] = 1
 			c.worker[args.WorkerID] = reduceID
-			reply.NMap = len(c.files)
+			reply.N = len(c.files)
+			reply.TaskType = "reduce"
 			fmt.Println("return in for")
 			return nil
 		}
 	}
+	return nil
+}
+
+func (c *Coordinator) RequestTask(args *TaskArgs, reply *TaskReply) error {
+	// Implement logic to assign reduce tasks to workers
+	// ...
+	if c.mapDone && !c.reduceDone {
+		fmt.Println("REQ Reduce")
+		c.RequestReduceTask(args, reply)
+	} else if !c.mapDone {
+		fmt.Println("REQ Map")
+		c.RequestMapTask(args, reply)
+	} else {
+		fmt.Println("All REQs Done")
+	}
+
 	return nil
 }
 
@@ -150,6 +169,7 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 		reduceStatus:      make(map[string]int),
 		worker:            make(map[int]string),
 		mapDone:           false,
+		reduceDone:        false,
 		nReduce:           nReduce,
 	}
 

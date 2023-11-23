@@ -24,17 +24,9 @@ type ExampleReply struct {
 	Y int
 }
 
-type MapTaskArgs struct {
-	WorkerID int
-}
-
 type MapTaskReply struct {
 	FileID  string
 	NReduce int
-}
-
-type ReduceTaskArgs struct {
-	WorkerID int
 }
 
 type ReduceTaskReply struct {
@@ -45,6 +37,17 @@ type ReduceTaskReply struct {
 type IntermediateData struct {
 	Key   string `json:"key"`
 	Value string `json:"value"`
+}
+
+type TaskReply struct {
+	FileID   string
+	N        int //nReduce or nMap
+	TaskType string
+}
+
+type TaskArgs struct {
+	WorkerID int
+	TaskType string
 }
 
 // Add your RPC definitions here.

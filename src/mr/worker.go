@@ -14,6 +14,11 @@ import (
 // for sorting by key.
 type ByKey []KeyValue
 
+// file paths
+var MAPPATH = "../maps/"
+var INTERMEDIATEPATH = "../intermediate/"
+var FINALPATH = "../final/"
+
 // for sorting by key.
 func (a ByKey) Len() int           { return len(a) }
 func (a ByKey) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
@@ -33,119 +38,113 @@ func ihash(key string) int {
 	return int(h.Sum32() & 0x7fffffff)
 }
 
+// Worker logic for map task
+func mapTaskWorker(mapf func(string, string) []KeyValue, workerID int, mapTask TaskReply) {
+
+	fileName := mapTask.FileID
+	nReduce := mapTask.N
+
+	content, err := os.ReadFile(MAPPATH + fileName + ".txt")
+	if err != nil {
+		fmt.Println("Error reading file: ", err)
+	}
+
+	//Save mapping to intermediate folder
+	mapped := mapf(fileName, string(content))
+	sort.Sort(ByKey(mapped))
+
+	intermediateFile, err := os.Create(INTERMEDIATEPATH + fileName + ".json")
+	if err != nil {
+		fmt.Println("Error saving intermediate file: ", err)
+	}
+	defer intermediateFile.Close()
+
+	//TODO
+	//Change var. names(!!)
+	dividedKv := make([][]KeyValue, nReduce)
+	var kvNo int
+	for _, kv := range mapped {
+		kvNo = ihash(kv.Key) % nReduce
+		dividedKv[kvNo] = append(dividedKv[kvNo], kv)
+	}
+
+	encoder := json.NewEncoder(intermediateFile)
+	for _, kv := range dividedKv {
+		err = encoder.Encode(&kv)
+		if err != nil {
+			panic(err)
+		}
+	}
+}
+
+// Worker logic for reduce task
+func reduceTaskWorker(reducef func(string, []string) string, rTask TaskReply) {
+
+	//Temp solution for reduceID
+	reduceID := rTask.FileID
+	var intermediateData []IntermediateData // Define a struct to hold your JSON data
+
+	//read json files from intermediate folder and then reduce
+	intermediateContent, err := os.ReadFile(INTERMEDIATEPATH + reduceID + ".json")
+	if err != nil {
+		fmt.Println("Error reading file: ", err)
+	}
+
+	// Unmarshal the JSON data into the slice of structs
+	err = json.Unmarshal(intermediateContent, &intermediateData)
+	if err != nil {
+		fmt.Println("Error unmarshaling JSON: ", err)
+		return
+	}
+
+	ofile, _ := os.Create(FINALPATH + reduceID + ".txt")
+
+	for i := 0; i < len(intermediateData); {
+		j := i + 1
+		for j < len(intermediateData) && intermediateData[j].Key == intermediateData[i].Key {
+			j++
+		}
+		values := []string{}
+		for k := i; k < j; k++ {
+			values = append(values, intermediateData[k].Value)
+		}
+		output := reducef(intermediateData[i].Key, values)
+
+		// This is the correct format for each line of Reduce output.
+		fmt.Fprintf(ofile, "%v %v\n", intermediateData[i].Key, output)
+
+		i = j
+	}
+	ofile.Close()
+}
+
 // main/mrworker.go calls this function.
-func Worker(mapf func(string, string) []KeyValue,
-	reducef func(string, []string) string) {
-
+func Worker(mapf func(string, string) []KeyValue, reducef func(string, []string) string) {
 	for {
-
 		//TODO:
 		//Implement if check that checks wether the task is map or reduce
 		//As of now, no logic helps split the behaviour depending on the task
-
-		mapPath := "../maps/"
-		intermediatePath := "../intermediate/"
-		finalPath := "../final/"
-
 		workerID := rand.Intn(9000) + 1000
+		var Task TaskReply
 
-		var mapTask MapTaskReply
-
-		ok := call("Coordinator.RequestMapTask", &MapTaskArgs{WorkerID: workerID}, &mapTask)
-		fmt.Println("OK: ", ok)
-		if !ok || mapTask.FileID == "" {
-			fmt.Println("Error")
+		ok := call("Coordinator.RequestTask", &TaskArgs{WorkerID: workerID}, &Task)
+		if !ok || Task.FileID == "" {
+			fmt.Println("Error getting task")
 			return
 		}
 
-		fileName := mapTask.FileID
-		nReduce := mapTask.NReduce
-
-		content, err := os.ReadFile(mapPath + fileName + ".txt")
-		if err != nil {
-			fmt.Println("Error reading file: ", err)
+		switch Task.TaskType {
+		case "map":
+			mapTaskWorker(mapf, workerID, Task)
+		case "reduce":
+			reduceTaskWorker(reducef, Task)
+		default:
+			fmt.Println("Error: Task type not found: " + Task.TaskType)
 		}
-
-		//Save mapping to intermediate folder
-		mapped := mapf(fileName, string(content))
-		sort.Sort(ByKey(mapped))
-
-		intermediateFile, err := os.Create(intermediatePath + fileName + ".json")
-		if err != nil {
-			fmt.Println("Error saving intermediate file: ", err)
-		}
-		defer intermediateFile.Close()
-
-		//TODO
-		//Change var. names(!!)
-		dividedKv := make([][]KeyValue, nReduce)
-		var kvNo int
-		for _, kv := range mapped {
-			kvNo = ihash(kv.Key) % nReduce
-			dividedKv[kvNo] = append(dividedKv[kvNo], kv)
-		}
-
-		encoder := json.NewEncoder(intermediateFile)
-		for _, kv := range dividedKv {
-			err = encoder.Encode(&kv)
-			if err != nil {
-				panic(err)
-			}
-		}
-		//||||||    																		  	    								  ||||||
-		//VVVVVV CURRENT REDUCE LOGIC, SHOULD BE SEGMENTED Out USING SWITCH CASES VVVVVV
-
-		/* USE THIS AFTER IMPLEMENTATION OF SWITCH CASES
-		var reduceTask ReduceTaskReply
-		ok = call("Coordinator.RequestReduceTask", &ReduceTaskArgs{WorkerID: workerID}, &reduceTask)
-		if !ok || reduceTask.ReduceID == "" {
-			fmt.Println("Error getting reduce task")
-			return
-		}
-		reduceID := reduceTask.ReduceID         //similar to fileID
-		*/
-
-		//Temp solution for reduceID
-		reduceID := fileName
-		var intermediateData []IntermediateData // Define a struct to hold your JSON data
-
-		//read json files from intermediate folder and then reduce
-		intermediateContent, err := os.ReadFile(intermediatePath + reduceID + ".json")
-		if err != nil {
-			fmt.Println("Error reading file: ", err)
-		}
-
-		// Unmarshal the JSON data into the slice of structs
-		err = json.Unmarshal(intermediateContent, &intermediateData)
-		if err != nil {
-			fmt.Println("Error unmarshaling JSON: ", err)
-			return
-		}
-
-		ofile, _ := os.Create(finalPath + reduceID + ".txt")
-
-		for i := 0; i < len(intermediateData); {
-			j := i + 1
-			for j < len(intermediateData) && intermediateData[j].Key == intermediateData[i].Key {
-				j++
-			}
-			values := []string{}
-			for k := i; k < j; k++ {
-				values = append(values, intermediateData[k].Value)
-			}
-			output := reducef(intermediateData[i].Key, values)
-
-			// This is the correct format for each line of Reduce output.
-			fmt.Fprintf(ofile, "%v %v\n", intermediateData[i].Key, output)
-
-			i = j
-		}
-		ofile.Close()
 	}
-
-	// Your worker implementation here.
-
 }
+
+// Your worker implementation here.
 
 // example function to show how to make an RPC call to the coordinator.
 //
