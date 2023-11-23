@@ -109,13 +109,12 @@ func reduceTaskWorker(reducef func(string, []string) string, rTask TaskReply) {
 			values = append(values, intermediateData[k].Value)
 		}
 		output := reducef(intermediateData[i].Key, values)
-
+		defer ofile.Close()
+		ofile.Write([]byte(output))
 		// This is the correct format for each line of Reduce output.
 		fmt.Fprintf(ofile, "%v %v\n", intermediateData[i].Key, output)
-
 		i = j
 	}
-	ofile.Close()
 }
 
 // main/mrworker.go calls this function.
@@ -129,7 +128,7 @@ func Worker(mapf func(string, string) []KeyValue, reducef func(string, []string)
 
 		ok := call("Coordinator.RequestTask", &TaskArgs{WorkerID: workerID}, &Task)
 		if !ok || Task.FileID == "" {
-			fmt.Println("Error getting task")
+			fmt.Println("Error getting task: " + Task.FileID)
 			return
 		}
 

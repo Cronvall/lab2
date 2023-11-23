@@ -57,6 +57,7 @@ func (c *Coordinator) RequestMapTask(args *TaskArgs, reply *TaskReply) error {
 			reply.N = c.nReduce
 			reply.TaskType = "map"
 			fmt.Println("return in for")
+			c.reduceStatus[fileID] = 0
 			return nil
 		} else {
 			c.mapDone = true
