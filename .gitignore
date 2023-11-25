@@ -2,6 +2,6 @@ pkg/
 api.key
 .api.key.trimmed
 *-handin.tar.gz
-src/intermediate/*.json
-src/maps/*.txt
-src/final/*.txt
+src/main/intermediate/*.json
+src/main/maps/*.txt
+src/main/final/*.txt

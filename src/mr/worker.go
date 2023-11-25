@@ -9,6 +9,7 @@ import (
 	"net/rpc"
 	"os"
 	"sort"
+	"strconv"
 )
 
 // for sorting by key.
@@ -36,8 +37,8 @@ func ihash(key string) int {
 // Worker logic for map task
 func mapTaskWorker(mapf func(string, string) []KeyValue, workerID int, mapTask TaskReply) {
 
-	mapPath := "../maps/"
-	intermediatePath := "../intermediate/"
+	mapPath := "maps/"
+	intermediatePath := "intermediate/"
 
 	fileName := mapTask.FileID
 	nReduce := mapTask.NReduce
@@ -77,13 +78,14 @@ func mapTaskWorker(mapf func(string, string) []KeyValue, workerID int, mapTask T
 
 func reduceTaskWorker(reducef func(string, []string) string, workerID int, reduceTask TaskReply) {
 
-	intermediatePath := "../intermediate/"
+	intermediatePath := "intermediate/"
 	fileID := reduceTask.FileID
 
 	intermediateFile, err := os.Open(intermediatePath + fileID + ".json")
 	if err != nil {
 		fmt.Println("Error opening JSON file: ", err)
 	}
+	defer intermediateFile.Close()
 
 	var kva []KeyValue
 	dec := json.NewDecoder(intermediateFile)
@@ -94,9 +96,11 @@ func reduceTaskWorker(reducef func(string, []string) string, workerID int, reduc
 	kva = append(kva, kv...)
 
 	sort.Sort(ByKey(kva))
-	outputPath := "../final/"
-	outputFileName := "mr-out-" + fileID + ".txt"
-	outputFile, err := os.Create(outputPath + outputFileName)
+	//outputPath := "final/"
+
+	jobNumber := strconv.Itoa(reduceTask.JobNumber)
+	outputFileName := "mr-out-" + jobNumber + ".txt"
+	outputFile, err := os.Create(outputFileName)
 	if err != nil {
 		fmt.Println("Error: ", err)
 	}
@@ -122,41 +126,68 @@ func reduceTaskWorker(reducef func(string, []string) string, workerID int, reduc
 
 }
 
+func recordCompletedTask(workerID int, task TaskReply) {
+	//TODO
+	var reply SubmitTaskReply
+	ok := call("Coordinator.SubmitJob", &SubmitTaskArgs{WorkerID: workerID, FileID: task.FileID, Task: task.Task}, &reply)
+	if !ok || !reply.OK {
+		fmt.Println("Failed Submitting job")
+	}
+
+	recordFilePath := "../records/record.txt"
+	recordFile, err := os.OpenFile(recordFilePath, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0644)
+	if err != nil {
+		fmt.Println("Error opening record file: ", err)
+	}
+	recordString := fmt.Sprintf("%d\t%s\t%s\n", workerID, task.Task, task.FileID)
+	fmt.Println(recordString)
+	_, err = recordFile.WriteString(recordString)
+	if err != nil {
+		fmt.Println("Error writing to record file: ", err)
+	}
+	recordFile.Close()
+}
+
 // main/mrworker.go calls this function.
 func Worker(mapf func(string, string) []KeyValue,
 	reducef func(string, []string) string) {
 
+	//TODO:
+	//Implement if check that checks wether the task is map or reduce
+	//As of now, no logic helps split the behaviour depending on the task
+
+	workerID := rand.Intn(9000) + 1000
+
 	for {
-		//TODO:
-		//Implement if check that checks wether the task is map or reduce
-		//As of now, no logic helps split the behaviour depending on the task
-
-		workerID := rand.Intn(9000) + 1000
-
 		var task TaskReply
 		ok := call("Coordinator.RequestTask", &TaskArgs{WorkerID: workerID}, &task)
 		fmt.Println("OK: ", ok)
 		if !ok || task.FileID == "" {
 			fmt.Println("Error calling for task")
+			fmt.Println(task.FileID)
 			return
 		}
+
+		fmt.Println(task.Task)
 
 		switch task.Task {
 		case "map":
 			mapTaskWorker(mapf, workerID, task)
+			recordCompletedTask(workerID, task)
 		case "reduce":
 			fmt.Println("REDUCE")
 			reduceTaskWorker(reducef, workerID, task)
+			recordCompletedTask(workerID, task)
 			//reduceTaskWorker(reducef, mapTask)
 		default:
 			fmt.Println("Error: Task type not found: " + task.Task)
 		}
-
-		// Your worker implementation here.
-
-		// uncomment to send the Example RPC to the coordinator.
-		// CallExample()
 	}
+
+	// Your worker implementation here.
+
+	// uncomment to send the Example RPC to the coordinator.
+	// CallExample()
 
 }
 

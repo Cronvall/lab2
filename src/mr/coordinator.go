@@ -33,13 +33,15 @@ type Coordinator struct {
 	// 2 = COMPLETED
 	reduceFiles map[string]int
 	//Id and completed tasks for a worker
-	worker map[int]string
+	worker map[int][]string
 	//Check if all maps are done
 	mapDone bool
 	//nReduce
 	nReduce int
 	//lock
 	mu sync.Mutex
+	//Tracker of how many reduce tasks has been done
+	reduceTracker int
 }
 
 // Your code here -- RPC handlers for the worker to call.
@@ -48,27 +50,28 @@ func (c *Coordinator) RequestTask(args *TaskArgs, reply *TaskReply) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
+	c.mapDone = c.checkMapDone()
 	if !c.mapDone {
 		for fileID, state := range c.partitionedFiles {
 			if state == 0 {
 				reply.Task = "map"
 				reply.FileID = fileID
 				c.partitionedFiles[fileID] = 1
-				c.worker[args.WorkerID] = fileID
+				//c.worker[args.WorkerID] = fileID
 				reply.NReduce = c.nReduce
-				c.reduceFiles[fileID] = 0
 				return nil
 			}
 		}
 	}
-	c.mapDone = true
 	if c.mapDone {
 		for fileID, state := range c.reduceFiles {
 			if state == 0 {
 				reply.Task = "reduce"
 				reply.FileID = fileID
+				c.reduceTracker++
+				reply.JobNumber = c.reduceTracker
 				c.reduceFiles[fileID] = 1
-				c.worker[args.WorkerID] = fileID
+				//c.worker[args.WorkerID] = fileID
 				return nil
 			}
 		}
@@ -100,38 +103,50 @@ func (c *Coordinator) server() {
 	go http.Serve(l, nil)
 }
 
+func (c *Coordinator) SubmitJob(args *SubmitTaskArgs, reply *SubmitTaskReply) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if args.Task == "map" {
+		c.worker[args.WorkerID] = append(c.worker[args.WorkerID], args.FileID)
+		c.partitionedFiles[args.FileID] = 2
+		c.reduceFiles[args.FileID] = 0
+		reply.OK = true
+		return nil
+	} else if args.Task == "reduce" {
+		c.worker[args.WorkerID] = append(c.worker[args.WorkerID], args.FileID)
+		c.reduceFiles[args.FileID] = 2
+		reply.OK = true
+		return nil
+	}
+	return nil
+}
+
+func (c *Coordinator) checkMapDone() bool {
+	for _, state := range c.partitionedFiles {
+		if state != 2 {
+			return false
+		}
+	}
+	return true
+}
+
 // main/mrcoordinator.go calls Done() periodically to find out
 // if the entire job has finished.
 func (c *Coordinator) Done() bool {
-	//c.mu.Lock()
-	//defer c.mu.Unlock()
-	ret := false
-	fmt.Println("DONE")
-
-	//TODO
-	//FIX DATA RACE
-
-	failBool := make(chan bool)
-	failWorker := make(chan int)
-	for worker := range c.worker {
-		go func(worker int) {
-			workerCopy := c.worker[worker]
-			time.Sleep(10 * time.Second)
-			if workerCopy == c.worker[worker] {
-				// Bad, wont work fix, want to return what workedID fails and then terminate all prior tasks
-				failBool <- true
-				failWorker <- worker
+	trueCheck := make(chan bool, 1)
+	go func() {
+		time.Sleep(10 * time.Second)
+		for _, state := range c.reduceFiles {
+			if state != 2 {
+				trueCheck <- false
 			}
-		}(worker)
+		}
+	}()
+	time.Sleep(11 * time.Second)
+	if <-trueCheck {
+		return false
 	}
-	if <-failBool {
-		//failedWorker := <-failWorker
-		//use the ID to remove the prior tasks from the failed worker and assign them to a new one
-		return ret
-	}
-	// Your code here.
 	return true
-
 }
 
 // create a Coordinator.
@@ -143,9 +158,10 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 		partitionedFiles:  make(map[string]int),
 		intermediateFiles: make([]string, 0),
 		reduceFiles:       make(map[string]int),
-		worker:            make(map[int]string),
+		worker:            make(map[int][]string),
 		mapDone:           false,
 		nReduce:           nReduce,
+		reduceTracker:     0,
 	}
 
 	for _, file := range files {
@@ -166,8 +182,8 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 				end = len(fileContent)
 			}
 			parts = append(parts, fileContent[start:end])
-			os.Create("../maps/" + fileName + id + ".txt")
-			os.WriteFile("../maps/"+fileName+id+".txt", []byte(parts[i]), 0644)
+			os.Create("maps/" + fileName + id + ".txt")
+			os.WriteFile("maps/"+fileName+id+".txt", []byte(parts[i]), 0644)
 		}
 	}
 

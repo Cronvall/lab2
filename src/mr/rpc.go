@@ -29,9 +29,20 @@ type TaskArgs struct {
 }
 
 type TaskReply struct {
-	Task    string
-	FileID  string
-	NReduce int
+	Task      string
+	FileID    string
+	NReduce   int
+	JobNumber int
+}
+
+type SubmitTaskArgs struct {
+	WorkerID int
+	FileID   string
+	Task     string
+}
+
+type SubmitTaskReply struct {
+	OK bool
 }
 
 // Add your RPC definitions here.
