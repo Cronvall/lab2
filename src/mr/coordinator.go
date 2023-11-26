@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"net/rpc"
 	"os"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -169,22 +168,29 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 		if err != nil {
 			fmt.Println(err)
 		}
-		fileContent := string(rawFileContent)
-		var parts []string
-		partSize := len(fileContent) / nReduce
+		//fileContent := string(rawFileContent)
+		///var parts []string
+		//partSize := len(fileContent) / nReduce
 		fileName := strings.Split(file, ".")[0]
+
 		for i := 0; i < nReduce; i++ {
-			id := strconv.Itoa(i)
-			c.partitionedFiles[fileName+id] = 0
-			start := i * partSize
-			end := start + partSize
-			if i == nReduce-1 {
-				end = len(fileContent)
-			}
-			parts = append(parts, fileContent[start:end])
-			os.Create("maps/" + fileName + id + ".txt")
-			os.WriteFile("maps/"+fileName+id+".txt", []byte(parts[i]), 0644)
+			c.partitionedFiles[fileName] = 0
+			os.Create("maps/" + fileName + ".txt")
+			os.WriteFile("maps/"+fileName+".txt", rawFileContent, 0644)
 		}
+
+		// for i := 0; i < nReduce; i++ {
+		// 	id := strconv.Itoa(i)
+		// 	c.partitionedFiles[fileName+id] = 0
+		// 	start := i * partSize
+		// 	end := start + partSize
+		// 	if i == nReduce-1 {
+		// 		end = len(fileContent)
+		// 	}
+		// 	parts = append(parts, fileContent[start:end])
+		// 	os.Create("maps/" + fileName + id + ".txt")
+		// 	os.WriteFile("maps/"+fileName+id+".txt", []byte(parts[i]), 0644)
+		// }
 	}
 
 	// Your code here.
