@@ -42,6 +42,7 @@ func mapTaskWorker(mapf func(string, string) []KeyValue, workerID int, mapTask T
 
 	fileName := mapTask.FileID
 	nReduce := mapTask.NReduce
+	jobNum := mapTask.JobNumber
 
 	content, err := os.ReadFile(mapPath + fileName + ".txt")
 	if err != nil {
@@ -52,12 +53,6 @@ func mapTaskWorker(mapf func(string, string) []KeyValue, workerID int, mapTask T
 	mapped := mapf(fileName, string(content))
 	sort.Sort(ByKey(mapped))
 
-	intermediateFile, err := os.Create(intermediatePath + fileName + ".json")
-	if err != nil {
-		fmt.Println("Error saving intermediate file: ", err)
-	}
-	defer intermediateFile.Close()
-
 	//TODO
 	//Change var. names(!!)
 	dividedKv := make([][]KeyValue, nReduce)
@@ -67,38 +62,51 @@ func mapTaskWorker(mapf func(string, string) []KeyValue, workerID int, mapTask T
 		dividedKv[kvNo] = append(dividedKv[kvNo], kv)
 	}
 
-	encoder := json.NewEncoder(intermediateFile)
-	for _, kv := range dividedKv {
-		err = encoder.Encode(&kv)
+	for i := 0; i < nReduce; i++ {
+		intermediateFileName := fmt.Sprintf("%v/mr-%v-%v.json", intermediatePath, jobNum, i)
+		intermediateFile, err := os.Create(intermediateFileName)
+		if err != nil {
+			fmt.Println("Error saving intermediate file: ", err)
+		}
+		defer intermediateFile.Close()
+
+		encoder := json.NewEncoder(intermediateFile)
+		err = encoder.Encode(&dividedKv[i])
 		if err != nil {
 			fmt.Print("Error encoding to JSON file: ", err)
+
 		}
 	}
+
 }
 
 func reduceTaskWorker(reducef func(string, []string) string, workerID int, reduceTask TaskReply) {
 
 	intermediatePath := "intermediate/"
-	fileID := reduceTask.FileID
+	//fileID := reduceTask.FileID
+	jobNumber := strconv.Itoa(reduceTask.JobNumber)
+	//nReduce := reduceTask.NReduce
 
-	intermediateFile, err := os.Open(intermediatePath + fileID + ".json")
-	if err != nil {
-		fmt.Println("Error opening JSON file: ", err)
+	var interMediateKv []KeyValue
+	for i := 0; i < 8; i++ {
+		intermediateFileName := fmt.Sprintf("%v/mr-%v-%v.json", intermediatePath, i, jobNumber)
+		intermediateFile, err := os.Open(intermediateFileName)
+		if err != nil {
+			fmt.Println("Error opening JSON file: ", err)
+		}
+		defer intermediateFile.Close()
+		dec := json.NewDecoder(intermediateFile)
+		var kv []KeyValue
+		if err := dec.Decode(&kv); err != nil {
+			fmt.Println("Error decoding JSON: ", err)
+		}
+		interMediateKv = append(interMediateKv, kv...)
+
 	}
-	defer intermediateFile.Close()
 
-	var kva []KeyValue
-	dec := json.NewDecoder(intermediateFile)
-	var kv []KeyValue
-	if err := dec.Decode(&kv); err != nil {
-		fmt.Println("Error decoding JSON: ", err)
-	}
-	kva = append(kva, kv...)
-
-	sort.Sort(ByKey(kva))
+	sort.Sort(ByKey(interMediateKv))
 	//outputPath := "final/"
 
-	jobNumber := strconv.Itoa(reduceTask.JobNumber)
 	outputFileName := "mr-out-" + jobNumber
 	outputFile, err := os.Create(outputFileName)
 	if err != nil {
@@ -107,19 +115,19 @@ func reduceTaskWorker(reducef func(string, []string) string, workerID int, reduc
 	defer outputFile.Close()
 
 	i := 0
-	for i < len(kva) {
+	for i < len(interMediateKv) {
 		j := i + 1
-		for j < len(kva) && kva[j].Key == kva[i].Key {
+		for j < len(interMediateKv) && interMediateKv[j].Key == interMediateKv[i].Key {
 			j++
 		}
 		var values []string
 		for k := i; k < j; k++ {
-			values = append(values, kva[k].Value)
+			values = append(values, interMediateKv[k].Value)
 		}
-		output := reducef(kva[i].Key, values)
+		output := reducef(interMediateKv[i].Key, values)
 
 		// this is the correct format for each line of Reduce output.
-		fmt.Fprintf(outputFile, "%v %v\n", kva[i].Key, output)
+		fmt.Fprintf(outputFile, "%v %v\n", interMediateKv[i].Key, output)
 		i = j
 		fmt.Println("OUTPUT:", output)
 	}

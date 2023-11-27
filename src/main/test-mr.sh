@@ -84,16 +84,16 @@ rm -f mr-out*
 
 echo '***' Starting wc test.
 
-maybe_quiet $TIMEOUT ../mrcoordinator ../pg*txt &
+maybe_quiet ../mrcoordinator ../pg*txt &
 pid=$!
 
 # give the coordinator time to create the sockets.
 sleep 1
 
 # start multiple workers.
-(maybe_quiet $TIMEOUT ../mrworker ../../mrapps/wc.so) &
-(maybe_quiet $TIMEOUT ../mrworker ../../mrapps/wc.so) &
-(maybe_quiet $TIMEOUT ../mrworker ../../mrapps/wc.so) &
+(maybe_quiet ../mrworker ../../mrapps/wc.so) &
+(maybe_quiet ../mrworker ../../mrapps/wc.so) &
+(maybe_quiet ../mrworker ../../mrapps/wc.so) &
 
 # wait for the coordinator to exit.
 wait $pid

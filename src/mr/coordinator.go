@@ -40,6 +40,8 @@ type Coordinator struct {
 	mu sync.Mutex
 	//Tracker of how many reduce tasks has been done
 	reduceTracker int
+	//Tracker of how many idle task
+	mapTracker int
 }
 
 // Your code here -- RPC handlers for the worker to call.
@@ -48,24 +50,27 @@ func (c *Coordinator) RequestTask(args *TaskArgs, reply *TaskReply) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	c.mapDone = c.checkMapDone()
-	if !c.mapDone {
+	mapDone := c.checkMapDone()
+	reduceDone := c.checkReduceDone()
+	if !mapDone {
 		for fileID, state := range c.partitionedFiles {
 			if state == 0 {
 				reply.Task = "map"
 				reply.FileID = fileID
+				reply.JobNumber = c.mapTracker
+				c.mapTracker++
 				c.partitionedFiles[fileID] = 1
 				//c.worker[args.WorkerID] = fileID
 				reply.NReduce = c.nReduce
 				return nil
 			}
 		}
-	}
-	if c.mapDone {
+	} else if mapDone {
 		for fileID, state := range c.reduceFiles {
 			if state == 0 {
 				reply.Task = "reduce"
 				reply.FileID = fileID
+				reply.NReduce = c.nReduce
 				reply.JobNumber = c.reduceTracker
 				c.reduceTracker++
 				c.reduceFiles[fileID] = 1
@@ -74,6 +79,10 @@ func (c *Coordinator) RequestTask(args *TaskArgs, reply *TaskReply) error {
 			}
 		}
 	}
+	if reduceDone {
+		os.Exit(4)
+	}
+
 	fmt.Println(c.mapDone)
 	fmt.Println("return")
 	return nil
@@ -128,6 +137,15 @@ func (c *Coordinator) checkMapDone() bool {
 	return true
 }
 
+func (c *Coordinator) checkReduceDone() bool {
+	for _, state := range c.reduceFiles {
+		if state != 2 {
+			return false
+		}
+	}
+	return true
+}
+
 // main/mrcoordinator.go calls Done() periodically to find out
 // if the entire job has finished.
 func (c *Coordinator) Done() bool {
@@ -162,6 +180,7 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 		mapDone:           false,
 		nReduce:           nReduce,
 		reduceTracker:     0,
+		mapTracker:        0,
 	}
 
 	for _, file := range files {
