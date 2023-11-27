@@ -99,7 +99,7 @@ func reduceTaskWorker(reducef func(string, []string) string, workerID int, reduc
 	//outputPath := "final/"
 
 	jobNumber := strconv.Itoa(reduceTask.JobNumber)
-	outputFileName := "mr-out-" + jobNumber + ".txt"
+	outputFileName := "mr-out-" + jobNumber
 	outputFile, err := os.Create(outputFileName)
 	if err != nil {
 		fmt.Println("Error: ", err)
@@ -157,7 +157,6 @@ func Worker(mapf func(string, string) []KeyValue,
 	//As of now, no logic helps split the behaviour depending on the task
 
 	workerID := rand.Intn(9000) + 1000
-
 	for {
 		var task TaskReply
 		ok := call("Coordinator.RequestTask", &TaskArgs{WorkerID: workerID}, &task)
@@ -181,6 +180,7 @@ func Worker(mapf func(string, string) []KeyValue,
 			//reduceTaskWorker(reducef, mapTask)
 		default:
 			fmt.Println("Error: Task type not found: " + task.Task)
+
 		}
 	}
 

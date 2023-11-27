@@ -9,7 +9,6 @@ import (
 	"os"
 	"strings"
 	"sync"
-	"time"
 )
 
 //lint:ignore U1000 Ignore unused function temporarily for debugging
@@ -67,8 +66,8 @@ func (c *Coordinator) RequestTask(args *TaskArgs, reply *TaskReply) error {
 			if state == 0 {
 				reply.Task = "reduce"
 				reply.FileID = fileID
-				c.reduceTracker++
 				reply.JobNumber = c.reduceTracker
+				c.reduceTracker++
 				c.reduceFiles[fileID] = 1
 				//c.worker[args.WorkerID] = fileID
 				return nil
@@ -134,14 +133,16 @@ func (c *Coordinator) checkMapDone() bool {
 func (c *Coordinator) Done() bool {
 	trueCheck := make(chan bool, 1)
 	go func() {
-		time.Sleep(10 * time.Second)
+		//time.Sleep(10 * time.Second)
+		c.mu.Lock()
 		for _, state := range c.reduceFiles {
 			if state != 2 {
 				trueCheck <- false
 			}
 		}
+		c.mu.Unlock()
 	}()
-	time.Sleep(11 * time.Second)
+	//time.Sleep(11 * time.Second)
 	if <-trueCheck {
 		return false
 	}
