@@ -10,6 +10,7 @@ import (
 	"os"
 	"sort"
 	"strconv"
+	"time"
 )
 
 // for sorting by key.
@@ -165,6 +166,7 @@ func Worker(mapf func(string, string) []KeyValue,
 	//As of now, no logic helps split the behaviour depending on the task
 
 	workerID := rand.Intn(9000) + 1000
+
 	for {
 		var task TaskReply
 		ok := call("Coordinator.RequestTask", &TaskArgs{WorkerID: workerID}, &task)
@@ -175,19 +177,43 @@ func Worker(mapf func(string, string) []KeyValue,
 			return
 		}
 
-		fmt.Println(task.Task)
+		timerChan := make(chan bool, 1)
+		taskCompletedChan := make(chan bool, 1)
 
-		switch task.Task {
-		case "map":
-			mapTaskWorker(mapf, workerID, task)
-			recordCompletedTask(workerID, task)
-		case "reduce":
-			fmt.Println("REDUCE")
-			reduceTaskWorker(reducef, workerID, task)
-			recordCompletedTask(workerID, task)
-			//reduceTaskWorker(reducef, mapTask)
-		default:
-			fmt.Println("Error: Task type not found: " + task.Task)
+		go func() {
+			time.Sleep(10 * time.Second)
+			timerChan <- true
+		}()
+
+		go func() {
+			//time.Sleep(11 * time.Second)
+			switch task.Task {
+			case "map":
+				mapTaskWorker(mapf, workerID, task)
+				recordCompletedTask(workerID, task)
+			case "reduce":
+				fmt.Println("REDUCE")
+				reduceTaskWorker(reducef, workerID, task)
+				recordCompletedTask(workerID, task)
+				//reduceTaskWorker(reducef, mapTask)
+			default:
+				fmt.Println("Error: Task type not found: " + task.Task)
+
+			}
+			taskCompletedChan <- true
+		}()
+
+		select {
+		case <-timerChan:
+			fmt.Println("Worker timed out")
+			ok := call("Coordinator.KillWorker", &KillWorker{FileID: task.FileID, Task: task.Task}, &KillWorkerReply{})
+			fmt.Println("OK: ", ok)
+			if !ok {
+				fmt.Println("Error killing worker")
+			}
+			os.Exit(4)
+		case <-taskCompletedChan:
+			fmt.Println("Task completed")
 
 		}
 	}
@@ -230,9 +256,9 @@ func CallExample() {
 // usually returns true.
 // returns false if something goes wrong.
 func call(rpcname string, args interface{}, reply interface{}) bool {
-	// c, err := rpc.DialHTTP("tcp", "127.0.0.1"+":1234")
-	sockname := coordinatorSock()
-	c, err := rpc.DialHTTP("unix", sockname)
+	c, err := rpc.DialHTTP("tcp", "127.0.0.1"+":1234")
+	//sockname := coordinatorSock()
+	//c, err := rpc.DialHTTP("unix", sockname)
 	if err != nil {
 		log.Fatal("dialing:", err)
 	}

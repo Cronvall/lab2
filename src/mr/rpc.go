@@ -45,6 +45,14 @@ type SubmitTaskReply struct {
 	OK bool
 }
 
+type KillWorker struct {
+	FileID string
+	Task   string
+}
+
+type KillWorkerReply struct {
+}
+
 // Add your RPC definitions here.
 
 // Cook up a unique-ish UNIX-domain socket name

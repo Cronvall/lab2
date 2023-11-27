@@ -47,11 +47,12 @@ type Coordinator struct {
 // Your code here -- RPC handlers for the worker to call.
 
 func (c *Coordinator) RequestTask(args *TaskArgs, reply *TaskReply) error {
+
+	mapDone := c.checkMapDone()
+	reduceDone := c.Done()
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	mapDone := c.checkMapDone()
-	reduceDone := c.checkReduceDone()
 	if !mapDone {
 		for fileID, state := range c.partitionedFiles {
 			if state == 0 {
@@ -88,6 +89,19 @@ func (c *Coordinator) RequestTask(args *TaskArgs, reply *TaskReply) error {
 	return nil
 }
 
+func (c *Coordinator) KillWorker(args *KillWorker, reply *KillWorkerReply) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	fileID := args.FileID
+	task := args.Task
+	if task == "map" {
+		c.partitionedFiles[fileID] = 0
+	} else if task == "reduce" {
+		c.reduceFiles[fileID] = 0
+	}
+	return nil
+}
+
 // an example RPC handler.
 //
 // the RPC argument and reply types are defined in rpc.go.
@@ -100,10 +114,10 @@ func (c *Coordinator) Example(args *ExampleArgs, reply *ExampleReply) error {
 func (c *Coordinator) server() {
 	rpc.Register(c)
 	rpc.HandleHTTP()
-	//l, e := net.Listen("tcp", ":1234")
-	sockname := coordinatorSock()
-	os.Remove(sockname)
-	l, e := net.Listen("unix", sockname)
+	l, e := net.Listen("tcp", ":1234")
+	//sockname := coordinatorSock()
+	//os.Remove(sockname)
+	//l, e := net.Listen("unix", sockname)
 	if e != nil {
 		log.Fatal("listen error:", e)
 	}
@@ -129,16 +143,9 @@ func (c *Coordinator) SubmitJob(args *SubmitTaskArgs, reply *SubmitTaskReply) er
 }
 
 func (c *Coordinator) checkMapDone() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	for _, state := range c.partitionedFiles {
-		if state != 2 {
-			return false
-		}
-	}
-	return true
-}
-
-func (c *Coordinator) checkReduceDone() bool {
-	for _, state := range c.reduceFiles {
 		if state != 2 {
 			return false
 		}
@@ -149,20 +156,15 @@ func (c *Coordinator) checkReduceDone() bool {
 // main/mrcoordinator.go calls Done() periodically to find out
 // if the entire job has finished.
 func (c *Coordinator) Done() bool {
-	trueCheck := make(chan bool, 1)
-	go func() {
-		//time.Sleep(10 * time.Second)
-		c.mu.Lock()
-		for _, state := range c.reduceFiles {
-			if state != 2 {
-				trueCheck <- false
-			}
-		}
-		c.mu.Unlock()
-	}()
-	//time.Sleep(11 * time.Second)
-	if <-trueCheck {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if len(c.reduceFiles) == 0 {
 		return false
+	}
+	for _, state := range c.reduceFiles {
+		if state != 2 {
+			return false
+		}
 	}
 	return true
 }
