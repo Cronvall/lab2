@@ -33,6 +33,7 @@ type TaskReply struct {
 	FileID    string
 	NReduce   int
 	JobNumber int
+	NFiles    int
 }
 
 type SubmitTaskArgs struct {

@@ -1,9 +1,11 @@
 package mr
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"hash/fnv"
+	"io"
 	"log"
 	"math/rand"
 	"net/rpc"
@@ -11,6 +13,11 @@ import (
 	"sort"
 	"strconv"
 	"time"
+
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/s3"
+	"github.com/joho/godotenv"
 )
 
 // for sorting by key.
@@ -45,6 +52,8 @@ func mapTaskWorker(mapf func(string, string) []KeyValue, workerID int, mapTask T
 	nReduce := mapTask.NReduce
 	jobNum := mapTask.JobNumber
 
+	getS3(mapPath + fileName + ".txt")
+
 	content, err := os.ReadFile(mapPath + fileName + ".txt")
 	if err != nil {
 		fmt.Println("Error reading file: ", err)
@@ -77,6 +86,7 @@ func mapTaskWorker(mapf func(string, string) []KeyValue, workerID int, mapTask T
 			fmt.Print("Error encoding to JSON file: ", err)
 
 		}
+		postS3(intermediateFileName)
 	}
 
 }
@@ -88,9 +98,12 @@ func reduceTaskWorker(reducef func(string, []string) string, workerID int, reduc
 	jobNumber := strconv.Itoa(reduceTask.JobNumber)
 	//nReduce := reduceTask.NReduce
 
+	NFiles := reduceTask.NFiles
+
 	var interMediateKv []KeyValue
-	for i := 0; i < 8; i++ {
+	for i := 0; i < NFiles; i++ {
 		intermediateFileName := fmt.Sprintf("%v/mr-%v-%v.json", intermediatePath, i, jobNumber)
+		getS3(intermediateFileName)
 		intermediateFile, err := os.Open(intermediateFileName)
 		if err != nil {
 			fmt.Println("Error opening JSON file: ", err)
@@ -132,6 +145,7 @@ func reduceTaskWorker(reducef func(string, []string) string, workerID int, reduc
 		i = j
 		fmt.Println("OUTPUT:", output)
 	}
+	postS3(outputFileName)
 
 }
 
@@ -157,6 +171,87 @@ func recordCompletedTask(workerID int, task TaskReply) {
 	recordFile.Close()
 }
 
+func postS3(filePath string) {
+	godotenv.Load()
+	region := "us-east-1"
+
+	sess, err := session.NewSession(&aws.Config{
+		Region: aws.String(region),
+	})
+	if err != nil {
+		fmt.Println("Error creating session:", err)
+	}
+	svc := s3.New(sess)
+
+	bucket := "mapreduce-tda596"
+
+	file, err := os.Open(filePath)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "Error opening file:", err)
+		return
+	}
+	defer file.Close()
+
+	// Read the contents of the file into a buffer
+	var buf bytes.Buffer
+	if _, err := io.Copy(&buf, file); err != nil {
+		fmt.Fprintln(os.Stderr, "Error reading file:", err)
+		return
+	}
+
+	// This uploads the contents of the buffer to S3
+	_, err = svc.PutObject(&s3.PutObjectInput{
+		Bucket: aws.String(bucket),
+		Key:    aws.String(filePath),
+		Body:   bytes.NewReader(buf.Bytes()),
+	})
+	if err != nil {
+		fmt.Println("Error uploading file:", err)
+		return
+	}
+
+	fmt.Println("File uploaded successfully!!!")
+
+}
+
+func getS3(readPath string) {
+	godotenv.Load()
+	region := "us-east-1"
+
+	sess, err := session.NewSession(&aws.Config{
+		Region: aws.String(region),
+	})
+	if err != nil {
+		fmt.Println("Error creating session:", err)
+	}
+	svc := s3.New(sess)
+
+	bucket := "mapreduce-tda596"
+
+	file, err := os.Create(readPath)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "Error opening file:", err)
+		return
+	}
+	defer file.Close()
+
+	resp, err := svc.GetObject(&s3.GetObjectInput{
+		Bucket: aws.String(bucket),
+		Key:    aws.String(readPath),
+	})
+	if err != nil {
+		fmt.Println("Error reading file from S3")
+	}
+
+	defer resp.Body.Close()
+	// Write the downloaded content to the file
+	_, err = io.Copy(file, resp.Body)
+	if err != nil {
+		fmt.Println("Error copying the file locally")
+	}
+
+}
+
 // main/mrworker.go calls this function.
 func Worker(mapf func(string, string) []KeyValue,
 	reducef func(string, []string) string) {
@@ -166,7 +261,6 @@ func Worker(mapf func(string, string) []KeyValue,
 	//As of now, no logic helps split the behaviour depending on the task
 
 	workerID := rand.Intn(9000) + 1000
-
 	for {
 		var task TaskReply
 		ok := call("Coordinator.RequestTask", &TaskArgs{WorkerID: workerID}, &task)
@@ -216,6 +310,7 @@ func Worker(mapf func(string, string) []KeyValue,
 			fmt.Println("Task completed")
 
 		}
+
 	}
 
 	// Your worker implementation here.
@@ -256,9 +351,9 @@ func CallExample() {
 // usually returns true.
 // returns false if something goes wrong.
 func call(rpcname string, args interface{}, reply interface{}) bool {
-	c, err := rpc.DialHTTP("tcp", "127.0.0.1"+":1234")
-	//sockname := coordinatorSock()
-	//c, err := rpc.DialHTTP("unix", sockname)
+	//c, err := rpc.DialHTTP("tcp", "127.0.0.1"+":1234")
+	sockname := coordinatorSock()
+	c, err := rpc.DialHTTP("unix", sockname)
 	if err != nil {
 		log.Fatal("dialing:", err)
 	}

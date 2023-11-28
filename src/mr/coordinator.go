@@ -73,6 +73,7 @@ func (c *Coordinator) RequestTask(args *TaskArgs, reply *TaskReply) error {
 				reply.FileID = fileID
 				reply.NReduce = c.nReduce
 				reply.JobNumber = c.reduceTracker
+				reply.NFiles = len(c.files)
 				c.reduceTracker++
 				c.reduceFiles[fileID] = 1
 				//c.worker[args.WorkerID] = fileID
@@ -114,10 +115,10 @@ func (c *Coordinator) Example(args *ExampleArgs, reply *ExampleReply) error {
 func (c *Coordinator) server() {
 	rpc.Register(c)
 	rpc.HandleHTTP()
-	l, e := net.Listen("tcp", ":1234")
-	//sockname := coordinatorSock()
-	//os.Remove(sockname)
-	//l, e := net.Listen("unix", sockname)
+	//l, e := net.Listen("tcp", ":1234")
+	sockname := coordinatorSock()
+	os.Remove(sockname)
+	l, e := net.Listen("unix", sockname)
 	if e != nil {
 		log.Fatal("listen error:", e)
 	}
@@ -186,10 +187,6 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 	}
 
 	for _, file := range files {
-		rawFileContent, err := os.ReadFile(file)
-		if err != nil {
-			fmt.Println(err)
-		}
 		//fileContent := string(rawFileContent)
 		///var parts []string
 		//partSize := len(fileContent) / nReduce
@@ -197,8 +194,7 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 
 		for i := 0; i < nReduce; i++ {
 			c.partitionedFiles[fileName] = 0
-			os.Create("maps/" + fileName + ".txt")
-			os.WriteFile("maps/"+fileName+".txt", rawFileContent, 0644)
+
 		}
 
 		// for i := 0; i < nReduce; i++ {
