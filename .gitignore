@@ -5,3 +5,4 @@ api.key
 src/main/intermediate/*.json
 src/main/maps/*.txt
 src/main/final/*.txt
+src/.DS_Store
