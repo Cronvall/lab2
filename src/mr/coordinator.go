@@ -115,10 +115,10 @@ func (c *Coordinator) Example(args *ExampleArgs, reply *ExampleReply) error {
 func (c *Coordinator) server() {
 	rpc.Register(c)
 	rpc.HandleHTTP()
-	l, e := net.Listen("tcp", ":8080")
-	//sockname := coordinatorSock()
-	//os.Remove(sockname)
-	//l, e := net.Listen("unix", sockname)
+	//l, e := net.Listen("tcp", ":8080")
+	sockname := coordinatorSock()
+	os.Remove(sockname)
+	l, e := net.Listen("unix", sockname)
 	if e != nil {
 		log.Fatal("listen error:", e)
 	}
@@ -187,28 +187,8 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 	}
 
 	for _, file := range files {
-		//fileContent := string(rawFileContent)
-		///var parts []string
-		//partSize := len(fileContent) / nReduce
 		fileName := strings.Split(file, ".")[0]
-
-		for i := 0; i < nReduce; i++ {
-			c.partitionedFiles[fileName] = 0
-
-		}
-
-		// for i := 0; i < nReduce; i++ {
-		// 	id := strconv.Itoa(i)
-		// 	c.partitionedFiles[fileName+id] = 0
-		// 	start := i * partSize
-		// 	end := start + partSize
-		// 	if i == nReduce-1 {
-		// 		end = len(fileContent)
-		// 	}
-		// 	parts = append(parts, fileContent[start:end])
-		// 	os.Create("maps/" + fileName + id + ".txt")
-		// 	os.WriteFile("maps/"+fileName+id+".txt", []byte(parts[i]), 0644)
-		// }
+		c.partitionedFiles[fileName] = 0
 	}
 
 	// Your code here.

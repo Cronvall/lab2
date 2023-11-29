@@ -52,7 +52,7 @@ func mapTaskWorker(mapf func(string, string) []KeyValue, workerID int, mapTask T
 	nReduce := mapTask.NReduce
 	jobNum := mapTask.JobNumber
 
-	getS3(mapPath + fileName + ".txt")
+	//getS3(mapPath + fileName + ".txt")
 
 	content, err := os.ReadFile(mapPath + fileName + ".txt")
 	if err != nil {
@@ -86,7 +86,7 @@ func mapTaskWorker(mapf func(string, string) []KeyValue, workerID int, mapTask T
 			fmt.Print("Error encoding to JSON file: ", err)
 
 		}
-		postS3(intermediateFileName)
+		//postS3(intermediateFileName)
 	}
 
 }
@@ -103,7 +103,7 @@ func reduceTaskWorker(reducef func(string, []string) string, workerID int, reduc
 	var interMediateKv []KeyValue
 	for i := 0; i < NFiles; i++ {
 		intermediateFileName := fmt.Sprintf("%v/mr-%v-%v.json", intermediatePath, i, jobNumber)
-		getS3(intermediateFileName)
+		//getS3(intermediateFileName)
 		intermediateFile, err := os.Open(intermediateFileName)
 		if err != nil {
 			fmt.Println("Error opening JSON file: ", err)
@@ -145,7 +145,7 @@ func reduceTaskWorker(reducef func(string, []string) string, workerID int, reduc
 		i = j
 		fmt.Println("OUTPUT:", output)
 	}
-	postS3(outputFileName)
+	//postS3(outputFileName)
 
 }
 
@@ -351,9 +351,9 @@ func CallExample() {
 // usually returns true.
 // returns false if something goes wrong.
 func call(rpcname string, args interface{}, reply interface{}) bool {
-	c, err := rpc.DialHTTP("tcp", "54.242.22.243"+":1234")
-	//sockname := coordinatorSock()
-	//c, err := rpc.DialHTTP("unix", sockname)
+	//c, err := rpc.DialHTTP("tcp", "54.242.22.243"+":1234")
+	sockname := coordinatorSock()
+	c, err := rpc.DialHTTP("unix", sockname)
 	if err != nil {
 		log.Fatal("dialing:", err)
 	}
