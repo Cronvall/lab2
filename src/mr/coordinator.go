@@ -115,7 +115,7 @@ func (c *Coordinator) Example(args *ExampleArgs, reply *ExampleReply) error {
 func (c *Coordinator) server() {
 	rpc.Register(c)
 	rpc.HandleHTTP()
-	l, e := net.Listen("tcp", ":8080")
+	l, e := net.Listen("tcp", ":1234")
 	//sockname := coordinatorSock()
 	//os.Remove(sockname)
 	//l, e := net.Listen("unix", sockname)
@@ -174,6 +174,7 @@ func (c *Coordinator) Done() bool {
 // main/mrcoordinator.go calls this function.
 // nReduce is the number of reduce tasks to use.
 func MakeCoordinator(files []string, nReduce int) *Coordinator {
+	fmt.Println("Coordinator started")
 	c := Coordinator{
 		files:             files,
 		partitionedFiles:  make(map[string]int),
@@ -190,12 +191,10 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 		//fileContent := string(rawFileContent)
 		///var parts []string
 		//partSize := len(fileContent) / nReduce
-		fileName := strings.Split(file, ".")[0]
+		mapExtraction := strings.Split(file, "/")[2]
 
-		for i := 0; i < nReduce; i++ {
-			c.partitionedFiles[fileName] = 0
-
-		}
+		fileName := strings.Split(mapExtraction, ".")[0]
+		c.partitionedFiles[fileName] = 0
 
 		// for i := 0; i < nReduce; i++ {
 		// 	id := strconv.Itoa(i)
@@ -210,6 +209,8 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 		// 	os.WriteFile("maps/"+fileName+id+".txt", []byte(parts[i]), 0644)
 		// }
 	}
+	fmt.Println("Files:", c.partitionedFiles)
+	fmt.Println(len(files))
 
 	// Your code here.
 

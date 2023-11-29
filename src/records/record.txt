@@ -390,3 +390,5 @@
 9635	reduce	pg-being_ernest
 9635	reduce	pg-dorian_gray
 9635	reduce	pg-huckleberry_finn
+5558	map	pg-tom_sawyer
+5558	map	pg-being_ernest

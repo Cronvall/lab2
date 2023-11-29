@@ -1,31 +1,29 @@
-# syntax=docker/dockerfile:1
+# 1: Build the Go binary
+FROM --platform=linux/amd64 golang:1.16
 
-FROM --platform=linux/amd64  golang:1.21.3
-
+# the working directory inside the container
 WORKDIR /app
 
-COPY go.mod ./
-
+COPY go.mod go.sum ./
 
 RUN go mod download
 
-COPY . .
+# the source code into the container
+COPY . ./
 
-# Compile wc.go (with -race flag)
-RUN go build -buildmode=plugin ./mrapps/wc.go
-
-
-
-# Start Worker LOCAL (with -race flag)
-# RUN go run -race -gcflags="all=-N -l" mrworker.go wc.so
-
-ENV PORT=8080
-
-EXPOSE 8080
+# the Go binary
+RUN CGO_ENABLED=0 GOOS=linux go build -buildmode=plugin -gcflags="all=-N -l" mrapps/wc.go
 
 
-CMD ["go", "run", "-race", "./main/mrcoordinator.go", "./main/pg-*.txt"]
+EXPOSE 1234
 
-# CMD ["go", "run", "-race", "-gcflags=all=-N -l", "./main/mrworker.go", "./main/wc.so"]
+COPY .aws /root/.aws
 
-# CMD ["sh", "-c", "go run -race ./main/mrcoordinator.go ./main/pg-*.txt && go run -race -gcflags=all=-N -l ./main/mrworker.go ./main/wc.so"]
+#Command to run the executable
+#CMD ["./mrcoordinator"]
+
+#CMD ["/bin/sh", "-c", "go run ./main/mrcoordinator.go ./main/pg-*.txt"]
+CMD ["/bin/sh", "-c", "go run ./main/mrcoordinator.go ./main/pg-*.txt"]
+
+
+

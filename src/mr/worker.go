@@ -215,7 +215,7 @@ func postS3(filePath string) {
 }
 
 func getS3(readPath string) {
-	godotenv.Load()
+	fmt.Println("INSIDE S3")
 	region := "us-east-1"
 
 	sess, err := session.NewSession(&aws.Config{
@@ -239,6 +239,7 @@ func getS3(readPath string) {
 		Bucket: aws.String(bucket),
 		Key:    aws.String(readPath),
 	})
+
 	if err != nil {
 		fmt.Println("Error reading file from S3")
 	}
@@ -249,6 +250,7 @@ func getS3(readPath string) {
 	if err != nil {
 		fmt.Println("Error copying the file locally")
 	}
+	fmt.Println("33333")
 
 }
 
@@ -351,7 +353,7 @@ func CallExample() {
 // usually returns true.
 // returns false if something goes wrong.
 func call(rpcname string, args interface{}, reply interface{}) bool {
-	c, err := rpc.DialHTTP("tcp", "54.242.22.243"+":1234")
+	c, err := rpc.DialHTTP("tcp", "localhost"+":1234")
 	//sockname := coordinatorSock()
 	//c, err := rpc.DialHTTP("unix", sockname)
 	if err != nil {
