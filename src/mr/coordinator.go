@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"net/rpc"
 	"os"
-	"strings"
 	"sync"
 )
 
@@ -52,6 +51,9 @@ func (c *Coordinator) RequestTask(args *TaskArgs, reply *TaskReply) error {
 	reduceDone := c.Done()
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
+	fmt.Print("FALSE: ")
+	fmt.Print(mapDone == reduceDone)
 
 	if !mapDone {
 		for fileID, state := range c.partitionedFiles {
@@ -146,6 +148,7 @@ func (c *Coordinator) SubmitJob(args *SubmitTaskArgs, reply *SubmitTaskReply) er
 func (c *Coordinator) checkMapDone() bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
 	for _, state := range c.partitionedFiles {
 		if state != 2 {
 			return false
@@ -159,6 +162,7 @@ func (c *Coordinator) checkMapDone() bool {
 func (c *Coordinator) Done() bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
 	if len(c.reduceFiles) == 0 {
 		return false
 	}
@@ -187,7 +191,8 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 	}
 
 	for _, file := range files {
-		fileName := strings.Split(file, ".")[0]
+		//fileName := strings.Split(file, ".")[2][1:]
+		fileName := file[:len(file)-4]
 		c.partitionedFiles[fileName] = 0
 	}
 

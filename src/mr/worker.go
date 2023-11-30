@@ -45,8 +45,8 @@ func ihash(key string) int {
 // Worker logic for map task
 func mapTaskWorker(mapf func(string, string) []KeyValue, workerID int, mapTask TaskReply) {
 
-	mapPath := "maps/"
-	intermediatePath := "intermediate/"
+	//mapPath := "maps/"
+	//intermediatePath := "intermediate/"
 
 	fileName := mapTask.FileID
 	nReduce := mapTask.NReduce
@@ -54,9 +54,10 @@ func mapTaskWorker(mapf func(string, string) []KeyValue, workerID int, mapTask T
 
 	//getS3(mapPath + fileName + ".txt")
 
-	content, err := os.ReadFile(mapPath + fileName + ".txt")
+	content, err := os.ReadFile(fileName + ".txt")
 	if err != nil {
 		fmt.Println("Error reading file: ", err)
+		killWorker(mapTask)
 	}
 
 	//Save mapping to intermediate folder
@@ -73,10 +74,11 @@ func mapTaskWorker(mapf func(string, string) []KeyValue, workerID int, mapTask T
 	}
 
 	for i := 0; i < nReduce; i++ {
-		intermediateFileName := fmt.Sprintf("%v/mr-%v-%v.json", intermediatePath, jobNum, i)
+		intermediateFileName := fmt.Sprintf("mr-%v-%v.json", jobNum, i)
 		intermediateFile, err := os.Create(intermediateFileName)
 		if err != nil {
 			fmt.Println("Error saving intermediate file: ", err)
+			killWorker(mapTask)
 		}
 		defer intermediateFile.Close()
 
@@ -84,7 +86,7 @@ func mapTaskWorker(mapf func(string, string) []KeyValue, workerID int, mapTask T
 		err = encoder.Encode(&dividedKv[i])
 		if err != nil {
 			fmt.Print("Error encoding to JSON file: ", err)
-
+			killWorker(mapTask)
 		}
 		//postS3(intermediateFileName)
 	}
@@ -93,7 +95,7 @@ func mapTaskWorker(mapf func(string, string) []KeyValue, workerID int, mapTask T
 
 func reduceTaskWorker(reducef func(string, []string) string, workerID int, reduceTask TaskReply) {
 
-	intermediatePath := "intermediate/"
+	//intermediatePath := "intermediate/"
 	//fileID := reduceTask.FileID
 	jobNumber := strconv.Itoa(reduceTask.JobNumber)
 	//nReduce := reduceTask.NReduce
@@ -102,22 +104,23 @@ func reduceTaskWorker(reducef func(string, []string) string, workerID int, reduc
 
 	var interMediateKv []KeyValue
 	for i := 0; i < NFiles; i++ {
-		intermediateFileName := fmt.Sprintf("%v/mr-%v-%v.json", intermediatePath, i, jobNumber)
+		intermediateFileName := fmt.Sprintf("mr-%v-%v.json", i, jobNumber)
 		//getS3(intermediateFileName)
 		intermediateFile, err := os.Open(intermediateFileName)
 		if err != nil {
 			fmt.Println("Error opening JSON file: ", err)
+			killWorker(reduceTask)
 		}
 		defer intermediateFile.Close()
 		dec := json.NewDecoder(intermediateFile)
 		var kv []KeyValue
 		if err := dec.Decode(&kv); err != nil {
 			fmt.Println("Error decoding JSON: ", err)
+			killWorker(reduceTask)
 		}
 		interMediateKv = append(interMediateKv, kv...)
 
 	}
-
 	sort.Sort(ByKey(interMediateKv))
 	//outputPath := "final/"
 
@@ -143,19 +146,22 @@ func reduceTaskWorker(reducef func(string, []string) string, workerID int, reduc
 		// this is the correct format for each line of Reduce output.
 		fmt.Fprintf(outputFile, "%v %v\n", interMediateKv[i].Key, output)
 		i = j
-		fmt.Println("OUTPUT:", output)
+		//fmt.Println("OUTPUT:", output)
 	}
 	//postS3(outputFileName)
 
 }
 
-func recordCompletedTask(workerID int, task TaskReply) {
-	//TODO
+func submitJob(workerID int, task TaskReply) {
 	var reply SubmitTaskReply
 	ok := call("Coordinator.SubmitJob", &SubmitTaskArgs{WorkerID: workerID, FileID: task.FileID, Task: task.Task}, &reply)
 	if !ok || !reply.OK {
 		fmt.Println("Failed Submitting job")
 	}
+}
+
+func recordCompletedTask(workerID int, task TaskReply) {
+	//TODO
 
 	recordFilePath := "../records/record.txt"
 	recordFile, err := os.OpenFile(recordFilePath, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0644)
@@ -268,7 +274,7 @@ func Worker(mapf func(string, string) []KeyValue,
 		if !ok || task.FileID == "" {
 			fmt.Println("Error calling for task")
 			fmt.Println(task.FileID)
-			return
+			os.Exit(4)
 		}
 
 		timerChan := make(chan bool, 1)
@@ -284,11 +290,13 @@ func Worker(mapf func(string, string) []KeyValue,
 			switch task.Task {
 			case "map":
 				mapTaskWorker(mapf, workerID, task)
-				recordCompletedTask(workerID, task)
+				//recordCompletedTask(workerID, task)
+				submitJob(workerID, task)
 			case "reduce":
 				fmt.Println("REDUCE")
 				reduceTaskWorker(reducef, workerID, task)
-				recordCompletedTask(workerID, task)
+				submitJob(workerID, task)
+				//recordCompletedTask(workerID, task)
 				//reduceTaskWorker(reducef, mapTask)
 			default:
 				fmt.Println("Error: Task type not found: " + task.Task)
@@ -299,13 +307,7 @@ func Worker(mapf func(string, string) []KeyValue,
 
 		select {
 		case <-timerChan:
-			fmt.Println("Worker timed out")
-			ok := call("Coordinator.KillWorker", &KillWorker{FileID: task.FileID, Task: task.Task}, &KillWorkerReply{})
-			fmt.Println("OK: ", ok)
-			if !ok {
-				fmt.Println("Error killing worker")
-			}
-			os.Exit(4)
+			killWorker(task)
 		case <-taskCompletedChan:
 			fmt.Println("Task completed")
 
@@ -318,6 +320,16 @@ func Worker(mapf func(string, string) []KeyValue,
 	// uncomment to send the Example RPC to the coordinator.
 	// CallExample()
 
+}
+
+func killWorker(task TaskReply) {
+	fmt.Println("Worker timed out")
+	ok := call("Coordinator.KillWorker", &KillWorker{FileID: task.FileID, Task: task.Task}, &KillWorkerReply{})
+	fmt.Println("OK: ", ok)
+	if !ok {
+		fmt.Println("Error killing worker")
+	}
+	os.Exit(4)
 }
 
 // example function to show how to make an RPC call to the coordinator.
