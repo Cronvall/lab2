@@ -115,6 +115,7 @@ wait
 
 #########################################################
 # now indexer
+
 rm -f mr-*
 
 # generate the correct output

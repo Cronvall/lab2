@@ -8,6 +8,7 @@ import (
 	"net/rpc"
 	"os"
 	"sync"
+	"time"
 )
 
 //lint:ignore U1000 Ignore unused function temporarily for debugging
@@ -47,13 +48,15 @@ type Coordinator struct {
 
 func (c *Coordinator) RequestTask(args *TaskArgs, reply *TaskReply) error {
 
-	mapDone := c.checkMapDone()
 	reduceDone := c.Done()
+
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	fmt.Print("FALSE: ")
-	fmt.Print(mapDone == reduceDone)
+	mapDone := c.checkMapDone()
+	//fmt.Println("MAP: ", c.partitionedFiles)
+
+	//fmt.Println("REDUCE: ", c.reduceFiles)
 
 	if !mapDone {
 		for fileID, state := range c.partitionedFiles {
@@ -65,6 +68,7 @@ func (c *Coordinator) RequestTask(args *TaskArgs, reply *TaskReply) error {
 				c.partitionedFiles[fileID] = 1
 				//c.worker[args.WorkerID] = fileID
 				reply.NReduce = c.nReduce
+				go c.checkTime(fileID, "map")
 				return nil
 			}
 		}
@@ -79,10 +83,13 @@ func (c *Coordinator) RequestTask(args *TaskArgs, reply *TaskReply) error {
 				c.reduceTracker++
 				c.reduceFiles[fileID] = 1
 				//c.worker[args.WorkerID] = fileID
+				go c.checkTime(fileID, "reduce")
+
 				return nil
 			}
 		}
 	}
+
 	if reduceDone {
 		os.Exit(4)
 	}
@@ -90,6 +97,42 @@ func (c *Coordinator) RequestTask(args *TaskArgs, reply *TaskReply) error {
 	fmt.Println(c.mapDone)
 	fmt.Println("return")
 	return nil
+}
+
+func (c *Coordinator) checkTime(fileID, task string) {
+
+	if task == "map" {
+		c.mu.Lock()
+		copy := c.partitionedFiles[fileID]
+		c.mu.Unlock()
+		time.Sleep(10 * time.Second)
+		c.mu.Lock()
+		if c.partitionedFiles[fileID] == copy {
+			c.killWorker(fileID, task)
+		}
+		c.mu.Unlock()
+
+	} else if task == "reduce" {
+		c.mu.Lock()
+		copy := c.reduceFiles[fileID]
+		c.mu.Unlock()
+		time.Sleep(10 * time.Second)
+		c.mu.Lock()
+		if c.reduceFiles[fileID] == copy {
+			c.killWorker(fileID, task)
+		}
+		c.mu.Unlock()
+	}
+}
+
+func (c *Coordinator) killWorker(fileID, task string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if task == "map" {
+		c.partitionedFiles[fileID] = 0
+	} else if task == "reduce" {
+		c.reduceFiles[fileID] = 0
+	}
 }
 
 func (c *Coordinator) KillWorker(args *KillWorker, reply *KillWorkerReply) error {
@@ -140,14 +183,13 @@ func (c *Coordinator) SubmitJob(args *SubmitTaskArgs, reply *SubmitTaskReply) er
 		c.worker[args.WorkerID] = append(c.worker[args.WorkerID], args.FileID)
 		c.reduceFiles[args.FileID] = 2
 		reply.OK = true
+
 		return nil
 	}
 	return nil
 }
 
 func (c *Coordinator) checkMapDone() bool {
-	c.mu.Lock()
-	defer c.mu.Unlock()
 
 	for _, state := range c.partitionedFiles {
 		if state != 2 {

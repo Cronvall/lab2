@@ -57,7 +57,6 @@ func mapTaskWorker(mapf func(string, string) []KeyValue, workerID int, mapTask T
 	content, err := os.ReadFile(fileName + ".txt")
 	if err != nil {
 		fmt.Println("Error reading file: ", err)
-		killWorker(mapTask)
 	}
 
 	//Save mapping to intermediate folder
@@ -78,7 +77,6 @@ func mapTaskWorker(mapf func(string, string) []KeyValue, workerID int, mapTask T
 		intermediateFile, err := os.Create(intermediateFileName)
 		if err != nil {
 			fmt.Println("Error saving intermediate file: ", err)
-			killWorker(mapTask)
 		}
 		defer intermediateFile.Close()
 
@@ -86,7 +84,6 @@ func mapTaskWorker(mapf func(string, string) []KeyValue, workerID int, mapTask T
 		err = encoder.Encode(&dividedKv[i])
 		if err != nil {
 			fmt.Print("Error encoding to JSON file: ", err)
-			killWorker(mapTask)
 		}
 		//postS3(intermediateFileName)
 	}
@@ -109,14 +106,12 @@ func reduceTaskWorker(reducef func(string, []string) string, workerID int, reduc
 		intermediateFile, err := os.Open(intermediateFileName)
 		if err != nil {
 			fmt.Println("Error opening JSON file: ", err)
-			killWorker(reduceTask)
 		}
 		defer intermediateFile.Close()
 		dec := json.NewDecoder(intermediateFile)
 		var kv []KeyValue
 		if err := dec.Decode(&kv); err != nil {
 			fmt.Println("Error decoding JSON: ", err)
-			killWorker(reduceTask)
 		}
 		interMediateKv = append(interMediateKv, kv...)
 
@@ -271,9 +266,13 @@ func Worker(mapf func(string, string) []KeyValue,
 		var task TaskReply
 		ok := call("Coordinator.RequestTask", &TaskArgs{WorkerID: workerID}, &task)
 		fmt.Println("OK: ", ok)
-		if !ok || task.FileID == "" {
+		if !ok {
 			fmt.Println("Error calling for task")
 			fmt.Println(task.FileID)
+			os.Exit(4)
+		}
+
+		if !ok {
 			os.Exit(4)
 		}
 
@@ -299,7 +298,8 @@ func Worker(mapf func(string, string) []KeyValue,
 				//recordCompletedTask(workerID, task)
 				//reduceTaskWorker(reducef, mapTask)
 			default:
-				fmt.Println("Error: Task type not found: " + task.Task)
+				fmt.Println("NO TASK GIVEN -> SLEEPING")
+				time.Sleep(3 * time.Second)
 
 			}
 			taskCompletedChan <- true
